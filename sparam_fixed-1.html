@@ -1,0 +1,2563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S-Parameter Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #1c2333;
+    --border:    #30363d;
+    --accent:    #00e5ff;
+    --accent2:   #7c3aed;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --danger:    #f85149;
+    --success:   #3fb950;
+    --warn:      #d29922;
+    --plot-bg:   #0d1117;
+    --plot-paper:#0d1117;
+    --plot-grid: #21262d;
+    --plot-zero: #30363d;
+  }
+
+  /* ── Light theme ── */
+  body.theme-light {
+    --bg:        #f6f8fa;
+    --surface:   #ffffff;
+    --surface2:  #f0f2f5;
+    --border:    #d0d7de;
+    --accent:    #0969da;
+    --accent2:   #7c3aed;
+    --text:      #1f2328;
+    --muted:     #656d76;
+    --danger:    #cf222e;
+    --success:   #1a7f37;
+    --warn:      #9a6700;
+    --plot-bg:   #ffffff;
+    --plot-paper:#ffffff;
+    --plot-grid: #e8ecf0;
+    --plot-zero: #d0d7de;
+  }
+
+  /* ── Blue theme ── */
+  body.theme-blue {
+    --bg:        #0a0e1a;
+    --surface:   #0d1526;
+    --surface2:  #111d35;
+    --border:    #1e3a5f;
+    --accent:    #4fc3f7;
+    --accent2:   #ab47bc;
+    --text:      #e3f2fd;
+    --muted:     #78909c;
+    --danger:    #ef5350;
+    --success:   #66bb6a;
+    --warn:      #ffa726;
+    --plot-bg:   #0a0e1a;
+    --plot-paper:#0a0e1a;
+    --plot-grid: #1e3a5f;
+    --plot-zero: #1e3a5f;
+  }
+
+  /* ── Theme toggle button ── */
+  .theme-switcher {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 4px;
+  }
+  .theme-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid transparent;
+    cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; transition: all 0.15s;
+  }
+  .theme-btn:hover { border-color: var(--accent); background: rgba(0,0,0,0.1); }
+  .theme-btn.active { background: var(--accent); border-color: var(--accent); }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .logo span { color: var(--muted); font-weight: 400; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; flex: 1; }
+
+  .btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); background: rgba(0,229,255,0.06); }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { background: #33ecff; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn.danger:hover { background: rgba(248,81,73,0.1); }
+
+  .sep { width: 1px; height: 24px; background: var(--border); }
+
+  select {
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+  select option { background: var(--surface2); color: var(--text); }
+
+  label.toggle {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--muted); font-size: 12px; cursor: pointer;
+    white-space: nowrap;
+  }
+  input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+  /* ── Main layout ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 270px;
+    min-width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 12px;
+  }
+
+  .sidebar-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+    color: var(--accent);
+  }
+  .dropzone .icon { font-size: 22px; margin-bottom: 4px; }
+
+  /* File list */
+  .file-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; padding: 8px; }
+
+  .file-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    position: relative;
+  }
+  .file-card:hover { border-color: var(--accent); }
+  .file-card.selected { border-color: var(--accent); background: rgba(0,229,255,0.06); }
+
+  .file-card-header { display: flex; align-items: center; gap: 6px; }
+  .file-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .file-name { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-remove { color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1; }
+  .file-remove:hover { color: var(--danger); }
+  .file-meta { font-size: 10px; color: var(--muted); margin-top: 2px; padding-left: 14px; }
+
+  /* Cascade list */
+  .cascade-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 200px; }
+  .cascade-item {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; font-size: 11px;
+  }
+  .cascade-idx {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+    color: var(--accent); width: 18px; text-align: center; flex-shrink: 0;
+  }
+  .cascade-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .cascade-rm { color: var(--muted); cursor: pointer; font-size: 13px; }
+  .cascade-rm:hover { color: var(--danger); }
+  .cascade-arrow { color: var(--border); font-size: 10px; text-align: center; }
+
+  /* ── Plot area ── */
+  .plot-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .plot-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 8px 12px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 6px 14px;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: color 0.15s;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    background: var(--bg);
+    border-color: var(--border);
+    color: var(--accent);
+  }
+
+  .plot-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .plot-grid.single { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .plot-grid.stacked { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+
+  .plot-cell {
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+  }
+  .plot-cell-title {
+    position: absolute;
+    top: 8px; left: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; color: var(--muted); gap: 10px; text-align: center;
+    padding: 20px;
+  }
+  .empty-state .big { font-size: 40px; }
+  .empty-state p { font-size: 13px; max-width: 280px; line-height: 1.6; }
+
+  /* Status bar */
+  .statusbar {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 4px 12px;
+    display: flex;
+    gap: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .statusbar span { display: flex; align-items: center; gap: 4px; }
+  .statusbar .ok { color: var(--success); }
+  .statusbar .warn { color: var(--warn); }
+
+  input[type=file] { display: none; }
+
+  /* Tooltip badge */
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 10px;
+    font-size: 10px; font-family: 'IBM Plex Mono', monospace;
+    background: rgba(0,229,255,0.12); color: var(--accent);
+    margin-left: 4px;
+  }
+  .badge.purple { background: rgba(124,58,237,0.2); color: #a78bfa; }
+
+  /* Param selector checkboxes */
+  .param-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .param-chip {
+    padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; cursor: pointer;
+    background: var(--surface2); color: var(--muted);
+    transition: all 0.15s;
+  }
+  .param-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.08); }
+
+  .add-cascade-row { display: flex; gap: 6px; margin-top: 6px; }
+  .add-cascade-row select { flex: 1; }
+
+  /* Resize handle */
+  .resize-handle {
+    width: 4px; cursor: col-resize; background: transparent;
+    flex-shrink: 0; transition: background 0.15s;
+  }
+  .resize-handle:hover { background: var(--accent); }
+
+  /* ══════════════════════════════════════
+     FLOATING MARKER PANEL
+  ══════════════════════════════════════ */
+  .mrp {
+    display: none;
+    flex-direction: column;
+    position: fixed;
+    top: 64px;
+    right: 24px;
+    width: 290px;
+    min-width: 220px;
+    max-width: 480px;
+    height: 480px;
+    min-height: 200px;
+    max-height: calc(100vh - 80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+    overflow: hidden;
+    z-index: 1000;
+    /* resize handle via resize property on the inner wrapper */
+  }
+  .mrp.open { display: flex; }
+
+  /* Resize grip — bottom-right corner */
+  .mrp-resize-grip {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 16px; height: 16px;
+    cursor: se-resize;
+    z-index: 10;
+    /* draw a subtle corner indicator */
+    background:
+      linear-gradient(135deg, transparent 50%, var(--border) 50%) no-repeat bottom right / 10px 10px,
+      linear-gradient(135deg, transparent 60%, var(--muted) 60%) no-repeat bottom right / 6px 6px;
+    opacity: 0.6;
+  }
+  .mrp-resize-grip:hover { opacity: 1; }
+
+  .mrp-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
+  }
+  .mrp-header:active { cursor: grabbing; }
+  .mrp-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: #ffd700; letter-spacing: 0.6px; flex: 1;
+  }
+  .mrp-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; font-weight: 700;
+    background: rgba(255,215,0,0.15); color: #ffd700;
+    padding: 1px 6px; border-radius: 10px;
+  }
+  .mrp-close-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 14px; padding: 0 3px; line-height: 1;
+  }
+  .mrp-close-btn:hover { color: var(--danger); }
+
+  /* Mode toggle button inside panel */
+  .mrp-mode-btn {
+    display: block; width: calc(100% - 16px);
+    margin: 8px 8px 4px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    cursor: pointer; text-align: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .mrp-mode-btn:hover { border-color: #ffd700; color: #ffd700; }
+  .mrp-mode-btn.active { border-color: #ffd700; color: #000; background: #ffd700; }
+  .mrp-clear-btn {
+    display: block; width: calc(100% - 16px);
+    margin: 0 8px 8px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--danger);
+    border-color: rgba(248,81,73,0.4);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    cursor: pointer; text-align: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .mrp-clear-btn:hover { background: rgba(248,81,73,0.1); border-color: var(--danger); }
+
+  .mrp-divider {
+    height: 1px; background: var(--border);
+    flex-shrink: 0; margin: 0;
+  }
+
+  /* Scrollable marker card list */
+  .mrp-list {
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 50%;
+    border-bottom: 1px solid var(--border);
+  }
+  .mrp-empty {
+    font-size: 11px; color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 16px 12px; text-align: center; line-height: 1.7;
+  }
+
+  /* One card per marker */
+  .mrp-card {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+    transition: background 0.1s;
+  }
+  .mrp-card:last-child { border-bottom: none; }
+  .mrp-card:hover { background: rgba(0,229,255,0.03); }
+  .mrp-card-top {
+    display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+  }
+  .mrp-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 1.5px solid rgba(0,0,0,0.35); flex-shrink: 0;
+  }
+  .mrp-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; font-weight: 700; flex: 1;
+  }
+  .mrp-rm {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1;
+  }
+  .mrp-rm:hover { color: var(--danger); }
+
+  /* Info grid: 2-col label/value layout */
+  .mrp-info {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 8px;
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    padding-left: 17px;
+  }
+  .mrp-lbl { color: var(--muted); font-size: 10px; white-space: nowrap; }
+  .mrp-val { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .mrp-val.good { color: var(--success); }
+  .mrp-val.warn { color: var(--warn); }
+  .mrp-val.bad  { color: var(--danger); }
+  .mrp-trace-val {
+    color: var(--muted); font-size: 10px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Summary table section */
+  .mrp-table-section {
+    flex: 1; display: flex; flex-direction: column;
+    overflow: hidden; min-height: 0;
+  }
+  .mrp-table-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; font-weight: 700; letter-spacing: 1px;
+    color: var(--muted); text-transform: uppercase;
+    padding: 6px 10px 5px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .mrp-table-scroll { flex: 1; overflow: auto; }
+  .mrp-tbl {
+    border-collapse: collapse;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; width: 100%;
+  }
+  .mrp-tbl th {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--surface2); color: var(--muted);
+    padding: 4px 8px; text-align: left;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.4px;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .mrp-tbl td {
+    padding: 4px 8px; border-bottom: 1px solid rgba(48,54,61,0.3);
+    white-space: nowrap;
+  }
+  .mrp-tbl tr:hover td { background: rgba(0,229,255,0.04); }
+  .td-mkr  { font-weight: 700; }
+  .td-freq { color: var(--muted); }
+  .td-good { color: var(--success); font-weight: 600; }
+  .td-warn { color: var(--warn);    font-weight: 600; }
+  .td-bad  { color: var(--danger);  font-weight: 600; }
+
+  /* Marker type badge */
+  .mrp-type-badge {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 1px 5px; border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    border: 1px solid;
+  }
+  .mrp-type-badge.point { color: #ffd700; border-color: rgba(255,215,0,0.4); background: rgba(255,215,0,0.08); }
+  .mrp-type-badge.line  { color: #56cfb2; border-color: rgba(86,207,178,0.4); background: rgba(86,207,178,0.08); }
+
+  /* Editable freq input inside card */
+  .mrp-freq-input {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 1px 5px;
+    width: 110px;
+    outline: none;
+  }
+  .mrp-freq-input:focus { border-color: var(--accent); }
+
+  /* Add line marker button */
+  .mrp-line-btn {
+    display: block; width: calc(100% - 16px);
+    margin: 0 8px 6px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(86,207,178,0.4);
+    background: transparent;
+    color: #56cfb2;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    cursor: pointer; text-align: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .mrp-line-btn:hover { background: rgba(86,207,178,0.1); border-color: #56cfb2; }
+  .mrp-tab {
+    display: none;
+    position: absolute; right: 0; top: 50%;
+    transform: translateY(-50%);
+    background: var(--surface2);
+    border: 1px solid var(--border); border-right: none;
+    color: #ffd700; font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    padding: 10px 4px; cursor: pointer;
+    border-radius: 5px 0 0 5px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    z-index: 20;
+    transition: background 0.15s;
+  }
+  .mrp-tab:hover { background: rgba(255,215,0,0.1); }
+  .mrp-tab.visible { display: block; }
+
+  /* Keep old name for compat */
+  .marker-val-good { color: var(--success); }
+  .marker-val-warn { color: var(--warn); }
+  .marker-rm-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 12px; padding: 0 4px; font-family: inherit;
+  }
+  .marker-rm-btn:hover { color: var(--danger); }
+
+  /* Marker mode indicator in toolbar */
+  .marker-mode-btn { position: relative; }
+  .marker-mode-btn.active-marker {
+    border-color: var(--warn);
+    color: var(--warn);
+    background: rgba(210,153,34,0.1);
+  }
+  .marker-count-badge {
+    position: absolute; top: -5px; right: -5px;
+    background: var(--warn); color: #000;
+    font-size: 9px; font-weight: 700; font-family: 'IBM Plex Mono', monospace;
+    border-radius: 8px; min-width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 3px;
+  }
+  .zoom-hint {
+    font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace;
+    white-space: nowrap; padding: 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">S<span>param</span>Lab</div>
+  <div class="toolbar">
+    <button class="btn primary" onclick="document.getElementById('fileInput').click()">+ Load Files</button>
+    <div class="sep"></div>
+    <span style="color:var(--muted);font-size:12px">Format:</span>
+    <select id="yFormat" onchange="replot()">
+      <option value="db">dB (Magnitude)</option>
+      <option value="mag">Linear (Magnitude)</option>
+      <option value="phase">Phase (°)</option>
+      <option value="real">Real</option>
+      <option value="imag">Imaginary</option>
+    </select>
+    <div class="sep"></div>
+    <label class="toggle"><input type="checkbox" id="showGrid" checked onchange="replot()"> Grid</label>
+    <label class="toggle"><input type="checkbox" id="showLegend" checked onchange="replot()"> Legend</label>
+    <div class="sep"></div>
+    <button class="btn" onclick="exportCSV()">Export CSV</button>
+    <button class="btn" onclick="exportPNG()">Export PNG</button>
+    <div class="sep"></div>
+    <button class="btn marker-mode-btn" id="markerModeBtn" onclick="toggleMarkerMode()" title="Click to toggle marker placement mode. When active, click on any plot to drop a marker.">
+      📍 Markers
+      <span class="marker-count-badge" id="markerCountBadge" style="display:none">0</span>
+    </button>
+    <button class="btn" onclick="clearAllMarkers()" title="Remove all markers">Clear Markers</button>
+    <span class="zoom-hint" id="zoomHint">🖱 Scroll to zoom · Drag to pan</span>
+    <div class="sep"></div>
+    <div class="theme-switcher" title="Switch theme">
+      <button class="theme-btn active" id="btn-dark"  onclick="setTheme('dark')"  title="Dark">🌙</button>
+      <button class="theme-btn"        id="btn-light" onclick="setTheme('light')" title="Light">☀️</button>
+      <button class="theme-btn"        id="btn-blue"  onclick="setTheme('blue')"  title="Blue">🔵</button>
+    </div>
+  </div>
+  <div style="margin-left:auto;white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);border-left:1px solid var(--border);padding-left:16px;">
+    Created by <span style="color:var(--accent);font-weight:600;">Harshit Sagar</span>
+    <span style="color:var(--border)"> | </span>
+    <span style="color:var(--accent2);font-weight:600;">219495</span>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+
+    <!-- Drop zone -->
+    <div class="sidebar-section">
+      <div class="dropzone" id="dropzone"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
+           onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📂</div>
+        <div>Drop <b>.s1p / .s2p / .s3p / .s4p</b> files here<br>or click to browse</div>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".s1p,.s2p,.s3p,.s4p,.snp,.ts" onchange="loadFiles(event)">
+    </div>
+
+    <!-- Param chips -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">Parameters</div>
+      <div class="param-grid" id="paramChips"></div>
+    </div>
+
+    <!-- Files -->
+    <div class="sidebar-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0">
+      <div class="sidebar-title">Loaded Files <span class="badge" id="fileCount">0</span></div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <!-- Cascade -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">Cascade Chain <span class="badge purple" id="cascadeCount">0</span></div>
+      <div class="cascade-list" id="cascadeList"></div>
+      <div class="add-cascade-row">
+        <select id="cascadeSelect"><option value="">— add file —</option></select>
+        <button class="btn" onclick="addToCascade()">Add →</button>
+      </div>
+      <button class="btn primary" style="margin-top:8px;width:100%" onclick="computeCascade()">⊕ Compute Cascade</button>
+      <button class="btn danger" style="margin-top:4px;width:100%" onclick="clearCascade()">Clear Chain</button>
+    </div>
+
+  </div>
+
+  <!-- Resize handle -->
+  <div class="resize-handle" id="resizeHandle"></div>
+
+  <!-- Plot area -->
+  <div class="plot-area" style="position:relative">
+    <div class="plot-tabs">
+      <div class="tab active" onclick="setLayout('quad',this)">Quad</div>
+      <div class="tab" onclick="setLayout('s21',this)">S21</div>
+      <div class="tab" onclick="setLayout('s11',this)">S11</div>
+      <div class="tab" onclick="setLayout('smith',this)">Smith</div>
+      <div class="tab" onclick="setLayout('all',this)">All Params</div>
+    </div>
+
+    <div class="plot-grid" id="plotGrid">
+      <!-- filled by JS -->
+    </div>
+
+    <!-- floating tab shown when mrp is closed -->
+    <div class="mrp-tab" id="mrpTab" onclick="mrpOpen()" title="Open Markers Panel">📍 MARKERS</div>
+
+    <div class="statusbar" id="statusbar">
+      <span>Ready — load .s2p files to begin</span>
+    </div>
+  </div>
+
+  <!-- ════ FLOATING MARKER PANEL ════ -->
+  <div class="mrp" id="mrpPanel">
+
+    <div class="mrp-header" id="mrpDragHandle">
+      <span class="mrp-title">📍 MARKERS</span>
+      <span class="mrp-count" id="mrpCount">0</span>
+      <button class="mrp-close-btn" onclick="mrpClose()" title="Close panel">✕</button>
+    </div>
+
+    <button class="mrp-mode-btn" id="mrpModeBtn" onclick="toggleMarkerMode()">
+      📍 Click-to-Place: OFF
+    </button>
+    <button class="mrp-line-btn" onclick="addLineMarker()">➕ Add Line Marker</button>
+    <button class="mrp-clear-btn" onclick="clearAllMarkers()">🗑 Clear All Markers</button>
+
+    <div class="mrp-divider"></div>
+
+    <!-- Per-marker cards -->
+    <div class="mrp-list" id="mrpList">
+      <div class="mrp-empty">Enable marker mode,<br>then click any trace on the plot.</div>
+    </div>
+
+    <!-- Summary table -->
+    <div class="mrp-table-section">
+      <div class="mrp-table-title">SUMMARY TABLE</div>
+      <div class="mrp-table-scroll">
+        <table class="mrp-tbl" id="mrpTable"></table>
+      </div>
+    </div>
+
+    <!-- Resize grip -->
+    <div class="mrp-resize-grip" id="mrpResizeGrip"></div>
+
+  </div>
+</div>
+
+
+
+<script>
+// ═══════════════════════════════════════════════
+//  Data store
+// ═══════════════════════════════════════════════
+let files = [];
+let cascadeResult = null;
+let activeParams = new Set(['S11','S21']);
+let currentLayout = 'quad';
+
+// ── Marker state ──
+let markerMode = false;        // are we in click-to-place mode?
+let markers = [];              // [{id, plotId, freq, traceName, yVal, fmt, color, type:'point'}]
+let lineMarkers = [];          // [{id, freq, color}]  — vertical line markers
+let markerCounter = 0;
+let lineMarkerCounter = 0;
+
+const LINE_MARKER_COLORS = ['#56cfb2','#ff6b9d','#ffd700','#a78bfa','#ff8c42','#00e5ff','#f85149','#3fb950'];
+
+// ── Zoom state per plot panel ──
+// Stored as { [plotId]: { xMin, xMax, yMin, yMax } }
+let zoomState = {};
+
+const COLORS = [
+  '#00e5ff','#7c3aed','#3fb950','#f85149','#d29922',
+  '#ff6b9d','#56cfb2','#ffd700','#ff8c42','#a78bfa'
+];
+
+const MARKER_COLORS = ['#ffd700','#ff6b9d','#56cfb2','#a78bfa','#ff8c42','#3fb950','#f85149','#00e5ff'];
+
+// ═══════════════════════════════════════════════
+//  Touchstone parser
+// ═══════════════════════════════════════════════
+function parseTouchstone(text, filename) {
+  const lines = text.split('\n');
+  let freqUnit = 'GHz', format = 'MA', resistance = 50, ports = 2;
+  
+  const ext = filename.match(/\.s(\d+)p$/i);
+  if (ext) ports = parseInt(ext[1]);
+
+  const data = [];
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('!')) continue;
+    
+    if (line.startsWith('#')) {
+      const parts = line.toLowerCase().replace('#','').trim().split(/\s+/);
+      if (parts[0]) freqUnit = parts[0];
+      if (parts[2]) format = parts[2].toUpperCase();
+      if (parts[4]) resistance = parseFloat(parts[4]);
+      continue;
+    }
+
+    const nums = line.split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+    if (nums.length < 1) continue;
+    data.push(nums);
+  }
+
+  const freqScale = { hz:1e-9, khz:1e-6, mhz:1e-3, ghz:1, thz:1e3 }[freqUnit.toLowerCase()] || 1;
+
+  const numParams = ports * ports;
+  const valuesPerPoint = 1 + numParams * 2;
+  
+  const flat = data.flat();
+  const freqs = [];
+  const sdata = [];
+
+  for (let i = 0; i < numParams; i++) sdata.push([]);
+
+  let idx = 0;
+  while (idx < flat.length) {
+    if (idx + valuesPerPoint > flat.length) break;
+    const f = flat[idx] * freqScale;
+    freqs.push(f);
+    
+    for (let p = 0; p < numParams; p++) {
+      const a = flat[idx + 1 + p*2];
+      const b = flat[idx + 2 + p*2];
+      let re, im;
+      
+      if (format === 'MA') {
+        re = a * Math.cos(b * Math.PI / 180);
+        im = a * Math.sin(b * Math.PI / 180);
+      } else if (format === 'DB') {
+        const mag = Math.pow(10, a/20);
+        re = mag * Math.cos(b * Math.PI / 180);
+        im = mag * Math.sin(b * Math.PI / 180);
+      } else {
+        re = a; im = b;
+      }
+      sdata[p].push({ f, re, im });
+    }
+    idx += valuesPerPoint;
+  }
+
+  return { name: filename, ports, freqs, sdata, resistance };
+}
+
+function getY(entry, fmt) {
+  const mag = Math.sqrt(entry.re**2 + entry.im**2);
+  switch(fmt) {
+    case 'db':    return 20 * Math.log10(mag + 1e-30);
+    case 'mag':   return mag;
+    case 'phase': return Math.atan2(entry.im, entry.re) * 180 / Math.PI;
+    case 'real':  return entry.re;
+    case 'imag':  return entry.im;
+  }
+  return 0;
+}
+
+// ═══════════════════════════════════════════════
+//  File loading
+// ═══════════════════════════════════════════════
+function loadFiles(event) {
+  const fileList = event.target.files;
+  for (const f of fileList) readFile(f);
+  event.target.value = '';
+}
+
+function readFile(f) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = parseTouchstone(e.target.result, f.name);
+      parsed.color = COLORS[files.length % COLORS.length];
+      parsed.id = Date.now() + Math.random();
+      files.push(parsed);
+      refreshUI();
+    } catch(err) {
+      alert('Error parsing ' + f.name + ': ' + err.message);
+    }
+  };
+  reader.readAsText(f);
+}
+
+// ═══════════════════════════════════════════════
+//  Cascading
+// ═══════════════════════════════════════════════
+let cascadeChain = [];
+
+function addToCascade() {
+  const sel = document.getElementById('cascadeSelect');
+  const idx = parseInt(sel.value);
+  if (isNaN(idx) || idx < 0 || idx >= files.length) return;
+  if (files[idx].ports !== 2) { alert('Cascading only supports 2-port files.'); return; }
+  cascadeChain.push(idx);
+  refreshCascadeUI();
+}
+
+function clearCascade() {
+  cascadeChain = [];
+  cascadeResult = null;
+  refreshCascadeUI();
+  replot();
+}
+
+function removeFromCascade(i) {
+  cascadeChain.splice(i, 1);
+  refreshCascadeUI();
+}
+
+function c(re, im=0) { return { re, im }; }
+function cadd(a,b) { return { re: a.re+b.re, im: a.im+b.im }; }
+function csub(a,b) { return { re: a.re-b.re, im: a.im-b.im }; }
+function cmul(a,b) { return { re: a.re*b.re - a.im*b.im, im: a.re*b.im + a.im*b.re }; }
+function cdiv(a,b) {
+  const d = b.re*b.re + b.im*b.im;
+  return { re: (a.re*b.re + a.im*b.im)/d, im: (a.im*b.re - a.re*b.im)/d };
+}
+
+function sToABCD(s11, s12, s21, s22, Z0) {
+  const one = c(1), two = c(2), z0 = c(Z0);
+  const twoS21 = cmul(two, s21);
+  const A = cdiv(cadd(cmul(cadd(one,s11), csub(one,s22)), cmul(s12,s21)), twoS21);
+  const B = cdiv(cmul(z0, csub(cmul(cadd(one,s11), cadd(one,s22)), cmul(s12,s21))), twoS21);
+  const C = cdiv(csub(cmul(csub(one,s11), csub(one,s22)), cmul(s12,s21)), cmul(twoS21, z0));
+  const D = cdiv(cadd(cmul(csub(one,s11), cadd(one,s22)), cmul(s12,s21)), twoS21);
+  return [A, B, C, D];
+}
+
+function abcdMul(M1, M2) {
+  const [A1,B1,C1,D1] = M1;
+  const [A2,B2,C2,D2] = M2;
+  return [
+    cadd(cmul(A1,A2), cmul(B1,C2)),
+    cadd(cmul(A1,B2), cmul(B1,D2)),
+    cadd(cmul(C1,A2), cmul(D1,C2)),
+    cadd(cmul(C1,B2), cmul(D1,D2)),
+  ];
+}
+
+function abcdToS(ABCD, Z0) {
+  const [A,B,C,D] = ABCD;
+  const z0 = c(Z0), two = c(2);
+  const BoverZ0  = cdiv(B, z0);
+  const CmulZ0   = cmul(C, z0);
+  const den = cadd(A, cadd(BoverZ0, cadd(CmulZ0, D)));
+  const S11 = cdiv(csub(cadd(A, BoverZ0), cadd(CmulZ0, D)), den);
+  const S12 = cdiv(cmul(two, csub(cmul(A,D), cmul(B,C))), den);
+  const S21 = cdiv(two, den);
+  const S22 = cdiv(cadd(csub(D, A), csub(BoverZ0, CmulZ0)), den);
+  return { S11, S12, S21, S22 };
+}
+
+function computeCascade() {
+  if (cascadeChain.length < 2) { alert('Add at least 2 files to cascade.'); return; }
+  const f0 = files[cascadeChain[0]];
+  const Z0 = f0.resistance || 50;
+  const freqs = f0.freqs;
+
+  function interpParam(paramArr, fileFreqs, f) {
+    if (f <= fileFreqs[0]) return paramArr[0];
+    if (f >= fileFreqs[fileFreqs.length-1]) return paramArr[paramArr.length-1];
+    const idx = fileFreqs.findIndex(x => x >= f);
+    const t = (f - fileFreqs[idx-1]) / (fileFreqs[idx] - fileFreqs[idx-1]);
+    return {
+      re: paramArr[idx-1].re + t*(paramArr[idx].re - paramArr[idx-1].re),
+      im: paramArr[idx-1].im + t*(paramArr[idx].im - paramArr[idx-1].im),
+    };
+  }
+
+  const resultSdata = [[], [], [], []];
+  for (let fi = 0; fi < freqs.length; fi++) {
+    const f = freqs[fi];
+    let cascABCD = null;
+    for (const fileIdx of cascadeChain) {
+      const file = files[fileIdx];
+      const s11 = interpParam(file.sdata[0], file.freqs, f);
+      const s12 = interpParam(file.sdata[1], file.freqs, f);
+      const s21 = interpParam(file.sdata[2], file.freqs, f);
+      const s22 = interpParam(file.sdata[3], file.freqs, f);
+      const M = sToABCD(s11, s12, s21, s22, Z0);
+      cascABCD = cascABCD ? abcdMul(cascABCD, M) : M;
+    }
+    const { S11, S12, S21, S22 } = abcdToS(cascABCD, Z0);
+    resultSdata[0].push({ f, re: S11.re, im: S11.im });
+    resultSdata[1].push({ f, re: S12.re, im: S12.im });
+    resultSdata[2].push({ f, re: S21.re, im: S21.im });
+    resultSdata[3].push({ f, re: S22.re, im: S22.im });
+  }
+
+  cascadeResult = {
+    name: '⊕ CASCADE', ports: 2, freqs,
+    sdata: resultSdata, color: '#ffd700', id: 'cascade', isCascade: true,
+  };
+
+  setStatus(`Cascade computed: ${cascadeChain.length} files · ${freqs.length} points · Z0=${Z0}Ω`, 'ok');
+  replot();
+}
+
+// ═══════════════════════════════════════════════
+//  UI refresh
+// ═══════════════════════════════════════════════
+function refreshUI() {
+  document.getElementById('fileCount').textContent = files.length;
+  
+  const allParams = new Set();
+  files.forEach(f => {
+    for (let r = 0; r < f.ports; r++)
+      for (let cc = 0; cc < f.ports; cc++)
+        allParams.add(`S${r+1}${cc+1}`);
+  });
+  
+  const chipsEl = document.getElementById('paramChips');
+  chipsEl.innerHTML = '';
+  for (const p of [...allParams].sort()) {
+    const chip = document.createElement('div');
+    chip.className = 'param-chip' + (activeParams.has(p) ? ' active' : '');
+    chip.textContent = p;
+    chip.onclick = () => {
+      if (activeParams.has(p)) activeParams.delete(p);
+      else activeParams.add(p);
+      chip.classList.toggle('active');
+      replot();
+    };
+    chipsEl.appendChild(chip);
+  }
+
+  const listEl = document.getElementById('fileList');
+  listEl.innerHTML = '';
+  files.forEach((f, i) => {
+    const card = document.createElement('div');
+    card.className = 'file-card';
+    card.innerHTML = `
+      <div class="file-card-header">
+        <div class="file-dot" style="background:${f.color}"></div>
+        <div class="file-name" title="${f.name}">${f.name}</div>
+        <div class="file-remove" onclick="removeFile(${i},event)">✕</div>
+      </div>
+      <div class="file-meta">${f.ports}-port · ${f.freqs.length} pts · ${f.freqs[0]?.toFixed(3)}–${f.freqs[f.freqs.length-1]?.toFixed(3)} GHz</div>
+    `;
+    listEl.appendChild(card);
+  });
+
+  const sel = document.getElementById('cascadeSelect');
+  sel.innerHTML = '<option value="">— add file —</option>';
+  files.forEach((f, i) => {
+    if (f.ports === 2) sel.innerHTML += `<option value="${i}">${f.name}</option>`;
+  });
+
+  refreshCascadeUI();
+  setStatus(`${files.length} file(s) loaded`, files.length > 0 ? 'ok' : '');
+  replot();
+}
+
+function refreshCascadeUI() {
+  document.getElementById('cascadeCount').textContent = cascadeChain.length;
+  const el = document.getElementById('cascadeList');
+  el.innerHTML = '';
+  cascadeChain.forEach((fileIdx, i) => {
+    const f = files[fileIdx];
+    if (!f) return;
+    if (i > 0) {
+      const arrow = document.createElement('div');
+      arrow.className = 'cascade-arrow';
+      arrow.textContent = '↓';
+      el.appendChild(arrow);
+    }
+    const item = document.createElement('div');
+    item.className = 'cascade-item';
+    item.innerHTML = `
+      <div class="cascade-idx">${i+1}</div>
+      <div class="cascade-dot" style="width:6px;height:6px;border-radius:50%;background:${f.color};flex-shrink:0"></div>
+      <div class="cascade-name" title="${f.name}">${f.name}</div>
+      <div class="cascade-rm" onclick="removeFromCascade(${i})">✕</div>
+    `;
+    el.appendChild(item);
+  });
+}
+
+function removeFile(i, e) {
+  e.stopPropagation();
+
+  const removedFileName = files[i]?.name || '';
+
+  // Remove markers that belong to this file's traces BEFORE removing file
+  markers = markers.filter(m => !m.traceName.includes(removedFileName));
+
+  cascadeChain = cascadeChain.filter(x => x !== i).map(x => x > i ? x-1 : x);
+  files.splice(i, 1);
+  if (cascadeResult) cascadeResult = null;
+
+  // Update marker badge and panel
+  updateMarkerBadge();
+  renderMarkerPanel();
+
+  refreshUI();
+}
+
+function setStatus(msg, cls='') {
+  const el = document.getElementById('statusbar');
+  el.innerHTML = `<span class="${cls}">${msg}</span>
+    <span style="margin-left:auto;color:var(--border)">|</span>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;">
+      Created by <span style="color:var(--accent)">Harshit Sagar</span>
+      <span style="color:var(--border)"> · </span>
+      <span style="color:#a78bfa">219495</span>
+    </span>`;
+}
+
+// ═══════════════════════════════════════════════
+//  Marker mode
+// ═══════════════════════════════════════════════
+function toggleMarkerMode() {
+  markerMode = !markerMode;
+
+  /* header button */
+  const btn = document.getElementById('markerModeBtn');
+  if (btn) {
+    if (markerMode) btn.classList.add('active-marker');
+    else            btn.classList.remove('active-marker');
+  }
+
+  /* right-panel button */
+  const mrpBtn = document.getElementById('mrpModeBtn');
+  if (mrpBtn) {
+    mrpBtn.textContent = markerMode ? '📍 Click-to-Place: ON' : '📍 Click-to-Place: OFF';
+    if (markerMode) mrpBtn.classList.add('active');
+    else            mrpBtn.classList.remove('active');
+  }
+
+  const hint = document.getElementById('zoomHint');
+  if (hint) hint.textContent = markerMode
+    ? '📍 Click on a trace to place marker · Esc to cancel'
+    : '🖱 Scroll to zoom · Drag to pan';
+
+  document.body.style.cursor = markerMode ? 'crosshair' : '';
+
+  /* auto-open panel when turning on */
+  if (markerMode) mrpOpen();
+
+  /* only update dragmode — no full replot needed */
+  ['p00','p01','p10','p11','pMain'].forEach(pid => {
+    const el = document.getElementById(pid);
+    if (el && el._fullLayout) {
+      Plotly.relayout(el, { dragmode: markerMode ? false : 'zoom' });
+    }
+  });
+}
+
+function clearAllMarkers() {
+  // Get all unique plotIds that have markers before clearing
+  const affectedPlots = [...new Set(markers.map(m => m.plotId))];
+  markers = [];
+  lineMarkers = [];
+  markerCounter = 0;
+  lineMarkerCounter = 0;
+  updateMarkerBadge();
+  renderMarkerPanel();
+
+  // Remove only marker traces from each affected plot, preserve visibility
+  for (const plotId of affectedPlots) {
+    const gd = document.getElementById(plotId);
+    if (!gd) continue;
+    const visibilityMap = {};
+    (gd.data || []).forEach(t => { visibilityMap[t.name] = t.visible; });
+
+    const newData = (gd.data || []).filter(t => !t._isMarker && !String(t.name).match(/^M\d+$/)).map(t => ({
+      ...t,
+      visible: visibilityMap[t.name] !== undefined ? visibilityMap[t.name] : true,
+    }));
+    Plotly.react(plotId, newData, { ...(gd.layout || {}), shapes: [] });
+  }
+
+  // Clear shapes from plots that had line markers but no point markers
+  getActivePlotIds().forEach(pid => {
+    const gd = document.getElementById(pid);
+    if (gd && gd.layout?.shapes?.length) Plotly.relayout(pid, { shapes: [] });
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && markerMode) {
+    markerMode = false;
+    const btn = document.getElementById('markerModeBtn');
+    btn.classList.remove('active-marker');
+    document.getElementById('zoomHint').textContent = '🖱 Scroll to zoom · Drag to pan';
+    document.body.style.cursor = '';
+  }
+});
+
+function updateMarkerBadge() {
+  const badge = document.getElementById('markerCountBadge');
+  if (badge) {
+    if (markers.length > 0) { badge.style.display = 'flex'; badge.textContent = markers.length; }
+    else badge.style.display = 'none';
+  }
+  /* also update the right-panel count badge via renderMarkerPanel */
+}
+
+// Find nearest point on a trace to a given frequency
+function nearestPoint(trace, freq) {
+  const xs = trace.x;
+  const ys = trace.y;
+  if (!xs || xs.length === 0) return null;
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < xs.length; i++) {
+    const d = Math.abs(xs[i] - freq);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  return { freq: xs[bestIdx], yVal: ys[bestIdx] };
+}
+
+// Called when user clicks on a Plotly chart in marker mode
+function handlePlotClick(plotId, data) {
+  if (!markerMode) return;
+  if (!data || !data.points || data.points.length === 0) return;
+
+  const pt = data.points[0];
+  // Ignore clicks on our own marker dot traces (they have _isMarker set)
+  if (pt.data && pt.data._isMarker) return;
+
+  const freq = pt.x;
+  const yVal = pt.y;
+  const traceName = pt.data.name || '?';
+  const fmt = document.getElementById('yFormat').value;
+
+  const id = ++markerCounter;
+  markers.push({
+    id, plotId, freq, yVal, traceName, fmt,
+    color: MARKER_COLORS[(id - 1) % MARKER_COLORS.length],
+  });
+
+  updateMarkerBadge();
+  renderMarkerPanel();
+
+  // Auto-open right marker panel
+  mrpOpen();
+
+  // ── Add marker trace WITHOUT resetting existing traces ──
+  const gd = document.getElementById(plotId);
+  if (!gd) return;
+
+  const existingData = (gd.data || []);
+  const visibilityMap = {};
+  existingData.forEach(t => { visibilityMap[t.name] = t.visible; });
+
+  const markerColor = MARKER_COLORS[(id-1) % MARKER_COLORS.length];
+
+  // Build new marker trace — markers only, no text (label is an annotation)
+  const newMarker = {
+    x: [freq],
+    y: [yVal],
+    mode: 'markers',
+    type: 'scatter',
+    name: `M${id}`,
+    showlegend: false,
+    cliponaxis: true,
+    _isMarker: true,
+    marker: {
+      symbol: 'diamond', size: 11, color: markerColor,
+      line: { color: '#000', width: 1.5 },
+    },
+    hovertemplate: `<b>M${id}</b><br>Trace: ${traceName}<br>Freq: %{x:.5f} GHz<br>Value: %{y:.4f}<extra></extra>`,
+  };
+
+  // Build annotation for the label (stays inside plot area, never covers X axis)
+  const newAnnotation = {
+    x: freq, y: yVal,
+    xref: 'x', yref: 'y',
+    text: `<b>M${id}</b>`,
+    showarrow: true,
+    arrowhead: 2, arrowsize: 0.8, arrowwidth: 1.2,
+    arrowcolor: markerColor,
+    ax: 0, ay: -28,
+    bgcolor: 'rgba(0,0,0,0.6)',
+    bordercolor: markerColor, borderwidth: 1, borderpad: 2,
+    font: { family: 'IBM Plex Mono', size: 10, color: markerColor },
+    xanchor: 'center', yanchor: 'bottom',
+    captureevents: false,
+    _markerId: id,  // used by applyMarkerVisibility to match annotation to marker
+  };
+
+  // Restore visibility then add new marker trace + annotation
+  const restoredData = existingData.map(t => ({
+    ...t,
+    visible: visibilityMap[t.name] !== undefined ? visibilityMap[t.name] : true,
+  }));
+
+  const existingAnnotations = (gd.layout && gd.layout.annotations) ? gd.layout.annotations : [];
+  const newLayout = { ...(gd.layout || {}), annotations: [...existingAnnotations, newAnnotation] };
+
+  Plotly.react(plotId, [...restoredData, newMarker], newLayout);
+}
+
+/* ── Move a point marker to a new frequency (snap to nearest data point) ── */
+function moveMarker(id, freqStr) {
+  const newFreq = parseFloat(freqStr);
+  if (isNaN(newFreq)) return;
+  const m = markers.find(x => x.id === id);
+  if (!m) return;
+
+  // Find the trace data in the current plot to snap to nearest point
+  const gd = document.getElementById(m.plotId);
+  if (!gd || !gd.data) return;
+
+  const parentTrace = (gd.data || []).find(t => t.name === m.traceName);
+  if (!parentTrace) return;
+
+  const snapped = nearestPoint(parentTrace, newFreq);
+  if (!snapped) return;
+
+  m.freq = snapped.freq;
+  m.yVal = snapped.yVal;
+
+  // Update the marker dot trace position
+  const markerTraceIdx = gd.data.findIndex(t => t.name === `M${id}`);
+  if (markerTraceIdx >= 0) {
+    Plotly.restyle(m.plotId, { x: [[snapped.freq]], y: [[snapped.yVal]] }, [markerTraceIdx]);
+  }
+
+  // Update annotation position
+  const existingAnnotations = (gd.layout && gd.layout.annotations) ? [...gd.layout.annotations] : [];
+  const annIdx = existingAnnotations.findIndex(a => a._markerId === id);
+  if (annIdx >= 0) {
+    existingAnnotations[annIdx] = { ...existingAnnotations[annIdx], x: snapped.freq, y: snapped.yVal };
+    Plotly.relayout(m.plotId, { annotations: existingAnnotations });
+  }
+
+  renderMarkerPanel();
+}
+
+/* ── Interpolate Y value on a loaded file's sdata at a given frequency ── */
+function interpFileParamAtFreq(file, paramIdx, freq) {
+  const arr   = file.sdata[paramIdx];
+  const freqs = file.freqs;
+  if (!arr || arr.length === 0) return null;
+  if (freq <= freqs[0])                    return arr[0];
+  if (freq >= freqs[freqs.length - 1])     return arr[arr.length - 1];
+  const i = freqs.findIndex(f => f >= freq);
+  if (i <= 0) return arr[0];
+  const t = (freq - freqs[i-1]) / (freqs[i] - freqs[i-1]);
+  return {
+    re: arr[i-1].re + t*(arr[i].re - arr[i-1].re),
+    im: arr[i-1].im + t*(arr[i].im - arr[i-1].im),
+  };
+}
+
+/* Build intersection rows for a line marker: {traceName, yVal} for every active trace */
+function lineMarkerIntersections(freq) {
+  const fmt = document.getElementById('yFormat').value;
+  const rows = [];
+  const allFiles = cascadeResult ? [...files, cascadeResult] : files;
+  for (const file of allFiles) {
+    for (let r = 0; r < file.ports; r++) {
+      for (let cc = 0; cc < file.ports; cc++) {
+        const label = `S${r+1}${cc+1}`;
+        if (!activeParams.has(label)) continue;
+        const pIdx  = r * file.ports + cc;
+        const entry = interpFileParamAtFreq(file, pIdx, freq);
+        if (!entry) continue;
+        rows.push({
+          traceName: `${file.isCascade ? '⊕ ' : ''}${file.name} · ${label}`,
+          yVal: getY(entry, fmt),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+/* Update just the intersection rows inside an already-rendered line marker card */
+function updateLineMarkerCard(lm) {
+  const container = document.getElementById(`lm-intersections-${lm.id}`);
+  if (!container) return;
+  container.innerHTML = buildLineMarkerIntersectionHtml(lm);
+}
+
+function buildLineMarkerIntersectionHtml(lm) {
+  const fmt      = document.getElementById('yFormat').value;
+  const unitStr  = { db:' dB', mag:'', phase:'°', real:'', imag:'' }[fmt] || '';
+  const fmtLabel = { db:'dB', mag:'|S|', phase:'Phase°', real:'Real', imag:'Imag' }[fmt] || '';
+  const rows = lineMarkerIntersections(lm.freq);
+  if (rows.length === 0) return `<span class="mrp-lbl" style="grid-column:1/-1;padding-top:2px">No active traces</span>`;
+  let html = '';
+  for (const row of rows) {
+    const yStr  = row.yVal.toFixed(4) + unitStr;
+    let cls = '';
+    if (fmt === 'db') cls = row.yVal > -3 ? 'good' : row.yVal > -20 ? 'warn' : 'bad';
+    const shortName = row.traceName.length > 22 ? row.traceName.slice(0,20)+'…' : row.traceName;
+    html += `<span class="mrp-lbl" title="${row.traceName}">${shortName}</span>
+             <span class="mrp-val ${cls}">${yStr}</span>`;
+  }
+  return html;
+}
+
+
+
+function getActivePlotIds() {
+  return ['p00','p01','p10','p11','pMain'].filter(id => document.getElementById(id)?._fullLayout);
+}
+
+function addLineMarker() {
+  const id = ++lineMarkerCounter;
+  const color = LINE_MARKER_COLORS[(id - 1) % LINE_MARKER_COLORS.length];
+
+  // Figure out current x-range midpoint so line appears in view
+  const activePlots = getActivePlotIds();
+  let freq = 1.0; // default 1 GHz
+  if (activePlots.length > 0) {
+    const gd = document.getElementById(activePlots[0]);
+    if (gd?._fullLayout?.xaxis?.range) {
+      const r = gd._fullLayout.xaxis.range;
+      freq = (r[0] + r[1]) / 2;
+    }
+  }
+
+  lineMarkers.push({ id, freq, color });
+  mrpOpen();
+  updateMarkerBadge();
+  renderMarkerPanel();
+  redrawLineMarkers();
+}
+
+function removeLineMarker(id) {
+  lineMarkers = lineMarkers.filter(lm => lm.id !== id);
+  updateMarkerBadge();
+  renderMarkerPanel();
+  redrawLineMarkers();
+}
+
+function moveLineMarker(id, freqStr) {
+  const newFreq = parseFloat(freqStr);
+  if (isNaN(newFreq)) return;
+  const lm = lineMarkers.find(x => x.id === id);
+  if (!lm) return;
+  lm.freq = newFreq;
+  redrawLineMarkers();
+  renderMarkerPanel();
+}
+
+/* Build Plotly shapes array for all line markers on a given plot */
+function buildLineMarkerShapes(plotId) {
+  return lineMarkers.map(lm => ({
+    type: 'line',
+    x0: lm.freq, x1: lm.freq,
+    y0: 0, y1: 1,
+    xref: 'x', yref: 'paper',
+    line: { color: lm.color, width: 2, dash: 'dot' },
+    _lineMarkerId: lm.id,  // custom field for identification
+  }));
+}
+
+/* Redraw line marker shapes on all active plots without wiping annotations/other layout */
+function redrawLineMarkers() {
+  const shapes = lineMarkers.map(lm => ({
+    type: 'line',
+    x0: lm.freq, x1: lm.freq,
+    y0: 0, y1: 1,
+    xref: 'x', yref: 'paper',
+    line: { color: lm.color, width: 2.5, dash: 'dot' },
+  }));
+
+  getActivePlotIds().forEach(pid => {
+    const gd = document.getElementById(pid);
+    if (!gd) return;
+    // Build a relayout update that replaces shapes as a whole array.
+    // We must include all shapes (line markers only — point markers don't use shapes).
+    Plotly.relayout(pid, { shapes });
+  });
+}
+
+/* ── Drag point markers and line markers on plot ── */
+// Global drag state (one drag at a time across all plots)
+let _dragState = { markerId: null, lineMarkerId: null, plotId: null };
+
+function attachMarkerDrag(plotId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+
+  el.addEventListener('mousedown', e => {
+    const gd = el;
+    if (!gd._fullLayout) return;
+
+    const rect = el.getBoundingClientRect();
+    const fl = gd._fullLayout;
+    const ml = fl.margin?.l || 55;
+    const mr = fl.margin?.r || 15;
+    const mt = fl.margin?.t || 36;
+    const mb = fl.margin?.b || 50;
+    const plotW = rect.width  - ml - mr;
+    const plotH = rect.height - mt - mb;
+    const mouseX = e.clientX - rect.left - ml;
+    const mouseY = e.clientY - rect.top  - mt;
+
+    if (mouseX < 0 || mouseX > plotW || mouseY < 0 || mouseY > plotH) return;
+
+    const xax = fl.xaxis, yax = fl.yaxis;
+    if (!xax?.range || !yax?.range) return;
+    const dataX = xax.range[0] + (mouseX / plotW) * (xax.range[1] - xax.range[0]);
+    const dataY = yax.range[1] - (mouseY / plotH) * (yax.range[1] - yax.range[0]);
+
+    const xPerPx = (xax.range[1] - xax.range[0]) / plotW;
+    const yPerPx = (yax.range[1] - yax.range[0]) / plotH;
+    const hitX   = xPerPx * 14;   // ~14px grab zone for line marker
+    const hitY   = yPerPx * 16;   // ~16px grab zone for point marker
+
+    // Check line markers first (vertical line — easy to grab)
+    for (const lm of lineMarkers) {
+      if (Math.abs(lm.freq - dataX) < hitX) {
+        _dragState = { markerId: null, lineMarkerId: lm.id, plotId };
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // Check point markers (diamond dot on plot)
+    for (const m of markers) {
+      if (m.plotId !== plotId) continue;
+      if (Math.abs(m.freq - dataX) < hitX && Math.abs(m.yVal - dataY) < hitY) {
+        _dragState = { markerId: m.id, lineMarkerId: null, plotId };
+        e.preventDefault();
+        return;
+      }
+    }
+  });
+
+  // Show resize cursor when hovering near a draggable marker
+  el.addEventListener('mousemove', e => {
+    if (_dragState.markerId !== null || _dragState.lineMarkerId !== null) return; // already dragging
+    const gd = el;
+    if (!gd._fullLayout || markerMode) return;
+
+    const rect = el.getBoundingClientRect();
+    const fl = gd._fullLayout;
+    const ml = fl.margin?.l || 55, mr = fl.margin?.r || 15;
+    const mt = fl.margin?.t || 36, mb = fl.margin?.b || 50;
+    const plotW = rect.width - ml - mr;
+    const plotH = rect.height - mt - mb;
+    const mouseX = e.clientX - rect.left - ml;
+    const mouseY = e.clientY - rect.top  - mt;
+    if (mouseX < 0 || mouseX > plotW || mouseY < 0 || mouseY > plotH) { el.style.cursor = ''; return; }
+
+    const xax = fl.xaxis, yax = fl.yaxis;
+    if (!xax?.range || !yax?.range) return;
+    const dataX = xax.range[0] + (mouseX / plotW) * (xax.range[1] - xax.range[0]);
+    const dataY = yax.range[1] - (mouseY / plotH) * (yax.range[1] - yax.range[0]);
+    const xPerPx = (xax.range[1] - xax.range[0]) / plotW;
+    const yPerPx = (yax.range[1] - yax.range[0]) / plotH;
+
+    for (const lm of lineMarkers) {
+      if (Math.abs(lm.freq - dataX) < xPerPx * 14) { el.style.cursor = 'ew-resize'; return; }
+    }
+    for (const m of markers) {
+      if (m.plotId !== plotId) continue;
+      if (Math.abs(m.freq - dataX) < xPerPx * 14 && Math.abs(m.yVal - dataY) < yPerPx * 16) {
+        el.style.cursor = 'grab'; return;
+      }
+    }
+    el.style.cursor = '';
+  });
+}
+
+// Document-level mousemove/mouseup so drag works even if Plotly captures element events
+document.addEventListener('mousemove', e => {
+  const { markerId, lineMarkerId, plotId } = _dragState;
+  if (markerId === null && lineMarkerId === null) return;
+
+  document.body.style.cursor = lineMarkerId !== null ? 'ew-resize' : 'grabbing';
+
+  const el = document.getElementById(plotId);
+  if (!el?._fullLayout) return;
+
+  const rect = el.getBoundingClientRect();
+  const fl   = el._fullLayout;
+  const ml   = fl.margin?.l || 55, mr = fl.margin?.r || 15;
+  const plotW = rect.width  - ml - mr;
+  const mouseX = e.clientX - rect.left - ml;
+  const dataX  = fl.xaxis.range[0] + (mouseX / plotW) * (fl.xaxis.range[1] - fl.xaxis.range[0]);
+
+  if (lineMarkerId !== null) {
+    const lm = lineMarkers.find(x => x.id === lineMarkerId);
+    if (!lm) return;
+    lm.freq = dataX;
+    redrawLineMarkers();
+    const inp = document.getElementById(`lfreq-${lm.id}`);
+    if (inp) inp.value = dataX.toFixed(6);
+    updateLineMarkerCard(lm);
+
+  } else if (markerId !== null) {
+    const m  = markers.find(x => x.id === markerId);
+    if (!m) return;
+    const gd = el;
+    const parentTrace = (gd.data || []).find(t => t.name === m.traceName);
+    if (!parentTrace) return;
+    const snapped = nearestPoint(parentTrace, dataX);
+    if (!snapped) return;
+
+    m.freq = snapped.freq;
+    m.yVal = snapped.yVal;
+
+    const markerTraceIdx = gd.data.findIndex(t => t.name === `M${markerId}`);
+    if (markerTraceIdx >= 0) {
+      Plotly.restyle(plotId, { x: [[snapped.freq]], y: [[snapped.yVal]] }, [markerTraceIdx]);
+    }
+    const anns = gd.layout?.annotations ? [...gd.layout.annotations] : [];
+    const annIdx = anns.findIndex(a => a._markerId === markerId);
+    if (annIdx >= 0) {
+      anns[annIdx] = { ...anns[annIdx], x: snapped.freq, y: snapped.yVal };
+      Plotly.relayout(plotId, { annotations: anns });
+    }
+    const inp = document.getElementById(`mfreq-${m.id}`);
+    if (inp) inp.value = snapped.freq.toFixed(6);
+    const valEl = document.getElementById(`mval-${m.id}`);
+    if (valEl) valEl.textContent = snapped.yVal.toFixed(4) + ({ db:' dB', mag:'', phase:'°', real:'', imag:'' }[document.getElementById('yFormat').value] || '');
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  document.body.style.cursor = '';
+  if (_dragState.markerId !== null || _dragState.lineMarkerId !== null) {
+    renderMarkerPanel();
+  }
+  _dragState = { markerId: null, lineMarkerId: null, plotId: null };
+});
+
+function removeMarker(id) {
+  const m = markers.find(x => x.id === id);
+  markers = markers.filter(x => x.id !== id);
+  updateMarkerBadge();
+  renderMarkerPanel();
+
+  if (m) {
+    const gd = document.getElementById(m.plotId);
+    if (gd) {
+      const visibilityMap = {};
+      (gd.data || []).forEach(t => { visibilityMap[t.name] = t.visible; });
+
+      // Remove marker trace
+      const newData = (gd.data || []).filter(t => t.name !== `M${id}`).map(t => ({
+        ...t,
+        visible: visibilityMap[t.name] !== undefined ? visibilityMap[t.name] : true,
+      }));
+
+      // Remove annotation
+      const existingAnnotations = (gd.layout && gd.layout.annotations) ? gd.layout.annotations : [];
+      const newAnnotations = existingAnnotations.filter(a => a._markerId !== id);
+      const newLayout = { ...(gd.layout || {}), annotations: newAnnotations };
+
+      Plotly.react(m.plotId, newData, newLayout);
+    }
+  }
+}
+
+/* ── Floating marker panel helpers ── */
+function mrpOpen() {
+  const panel = document.getElementById('mrpPanel');
+  panel.classList.add('open');
+  document.getElementById('mrpTab').classList.remove('visible');
+}
+function mrpClose() {
+  const panel = document.getElementById('mrpPanel');
+  panel.classList.remove('open');
+  document.getElementById('mrpTab').classList.add('visible');
+}
+
+// ── Drag to move ──
+(function() {
+  let drag = false, ox = 0, oy = 0, px = 0, py = 0;
+  const panel = document.getElementById('mrpPanel');
+  const handle = document.getElementById('mrpDragHandle');
+
+  handle.addEventListener('mousedown', e => {
+    if (e.target.closest('button')) return; // don't drag on button clicks
+    drag = true;
+    const rect = panel.getBoundingClientRect();
+    ox = e.clientX - rect.left;
+    oy = e.clientY - rect.top;
+    panel.style.transition = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    let nx = e.clientX - ox;
+    let ny = e.clientY - oy;
+    // Keep within viewport
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    nx = Math.max(0, Math.min(window.innerWidth - w, nx));
+    ny = Math.max(0, Math.min(window.innerHeight - h, ny));
+    panel.style.left = nx + 'px';
+    panel.style.top  = ny + 'px';
+    panel.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => { drag = false; });
+})();
+
+// ── Resize from bottom-right corner ──
+(function() {
+  let resizing = false, startX = 0, startY = 0, startW = 0, startH = 0;
+  const panel = document.getElementById('mrpPanel');
+  const grip  = document.getElementById('mrpResizeGrip');
+
+  grip.addEventListener('mousedown', e => {
+    resizing = true;
+    startX = e.clientX; startY = e.clientY;
+    startW = panel.offsetWidth; startH = panel.offsetHeight;
+    e.preventDefault(); e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!resizing) return;
+    const newW = Math.max(220, Math.min(600, startW + (e.clientX - startX)));
+    const newH = Math.max(200, Math.min(window.innerHeight - 80, startH + (e.clientY - startY)));
+    panel.style.width  = newW + 'px';
+    panel.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => { resizing = false; });
+})();
+
+function renderMarkerPanel() {
+  const fmt      = document.getElementById('yFormat').value;
+  const fmtLabel = { db:'dB', mag:'|S|', phase:'Phase°', real:'Real', imag:'Imag' }[fmt] || '';
+  const unitStr  = { db:' dB', mag:'', phase:'°', real:'', imag:'' }[fmt] || '';
+
+  /* count badge */
+  const countEl = document.getElementById('mrpCount');
+  if (countEl) countEl.textContent = markers.length + lineMarkers.length;
+
+  const listEl = document.getElementById('mrpList');
+  if (!listEl) return;
+
+  const allEmpty = markers.length === 0 && lineMarkers.length === 0;
+  if (allEmpty) {
+    listEl.innerHTML = '<div class="mrp-empty">Enable marker mode,<br>then click any trace on the plot.<br><br>Or click "Add Line Marker".</div>';
+    const tbl = document.getElementById('mrpTable');
+    if (tbl) tbl.innerHTML = '';
+    return;
+  }
+
+  let listHtml = '';
+
+  // ── Point markers ──
+  for (const m of markers) {
+    const yVal  = m.yVal;
+    const yStr  = (typeof yVal === 'number') ? yVal.toFixed(4) + unitStr : '—';
+    let valClass = 'good';
+    if (fmt === 'db') valClass = yVal > -3 ? 'good' : yVal > -20 ? 'warn' : 'bad';
+    const shortTrace = m.traceName.length > 24 ? m.traceName.slice(0,22)+'…' : m.traceName;
+
+    listHtml += `
+    <div class="mrp-card">
+      <div class="mrp-card-top">
+        <div class="mrp-dot" style="background:${m.color}"></div>
+        <span class="mrp-id" style="color:${m.color}">M${m.id}</span>
+        <span class="mrp-type-badge point">POINT</span>
+        <button class="mrp-rm" onclick="removeMarker(${m.id})" title="Remove M${m.id}">✕</button>
+      </div>
+      <div class="mrp-info">
+        <span class="mrp-lbl">Freq</span>
+        <span><input class="mrp-freq-input" id="mfreq-${m.id}"
+          value="${m.freq.toFixed(6)}"
+          onkeydown="if(event.key==='Enter'){moveMarker(${m.id},this.value)}"
+          onblur="moveMarker(${m.id},this.value)"
+          title="Edit frequency and press Enter or drag diamond on plot"/> GHz</span>
+
+        <span class="mrp-lbl">${fmtLabel}</span>
+        <span class="mrp-val ${valClass}" id="mval-${m.id}">${yStr}</span>
+
+        <span class="mrp-lbl">Trace</span>
+        <span class="mrp-trace-val" title="${m.traceName}">${shortTrace}</span>
+      </div>
+    </div>`;
+  }
+
+  // ── Line markers ──
+  for (const lm of lineMarkers) {
+    listHtml += `
+    <div class="mrp-card">
+      <div class="mrp-card-top">
+        <div class="mrp-dot" style="background:${lm.color};border-radius:2px"></div>
+        <span class="mrp-id" style="color:${lm.color}">L${lm.id}</span>
+        <span class="mrp-type-badge line">LINE</span>
+        <button class="mrp-rm" onclick="removeLineMarker(${lm.id})" title="Remove L${lm.id}">✕</button>
+      </div>
+      <div class="mrp-info">
+        <span class="mrp-lbl">Freq</span>
+        <span><input class="mrp-freq-input" id="lfreq-${lm.id}"
+          value="${lm.freq.toFixed(6)}"
+          onkeydown="if(event.key==='Enter'){moveLineMarker(${lm.id},this.value)}"
+          onblur="moveLineMarker(${lm.id},this.value)"
+          title="Edit frequency and press Enter or drag line on plot"/> GHz</span>
+        <div id="lm-intersections-${lm.id}" style="display:contents">${buildLineMarkerIntersectionHtml(lm)}</div>
+      </div>
+    </div>`;
+  }
+
+  listEl.innerHTML = listHtml;
+
+  /* ── SUMMARY TABLE (point markers + line marker intersections) ── */
+  const tbl = document.getElementById('mrpTable');
+  if (!tbl) return;
+  if (markers.length === 0 && lineMarkers.length === 0) { tbl.innerHTML = ''; return; }
+
+  let tblHtml = `<thead><tr>
+    <th class="td-mkr">MKR</th>
+    <th class="td-freq">Freq (GHz)</th>
+    <th>${fmtLabel}</th>
+    <th>Trace</th>
+  </tr></thead><tbody>`;
+
+  for (const m of markers) {
+    const yVal  = m.yVal;
+    const yStr  = (typeof yVal === 'number') ? yVal.toFixed(4) + unitStr : '—';
+    let tdClass = 'td-good';
+    if (fmt === 'db') tdClass = yVal > -3 ? 'td-good' : yVal > -20 ? 'td-warn' : 'td-bad';
+    const shortTrace = m.traceName.length > 16 ? m.traceName.slice(0,14)+'…' : m.traceName;
+
+    tblHtml += `<tr>
+      <td class="td-mkr" style="color:${m.color}">M${m.id}</td>
+      <td class="td-freq">${m.freq.toFixed(5)}</td>
+      <td class="${tdClass}">${yStr}</td>
+      <td title="${m.traceName}">${shortTrace}</td>
+    </tr>`;
+  }
+
+  for (const lm of lineMarkers) {
+    const rows = lineMarkerIntersections(lm.freq);
+    if (rows.length === 0) {
+      tblHtml += `<tr>
+        <td class="td-mkr" style="color:${lm.color}">L${lm.id}</td>
+        <td class="td-freq">${lm.freq.toFixed(5)}</td>
+        <td colspan="2" style="color:var(--muted)">—</td>
+      </tr>`;
+    } else {
+      rows.forEach((row, ri) => {
+        let tdClass = '';
+        if (fmt === 'db') tdClass = row.yVal > -3 ? 'td-good' : row.yVal > -20 ? 'td-warn' : 'td-bad';
+        const shortTrace = row.traceName.length > 16 ? row.traceName.slice(0,14)+'…' : row.traceName;
+        tblHtml += `<tr>
+          <td class="td-mkr" style="color:${lm.color}">${ri === 0 ? `L${lm.id}` : ''}</td>
+          <td class="td-freq">${ri === 0 ? lm.freq.toFixed(5) : ''}</td>
+          <td class="${tdClass}">${row.yVal.toFixed(4) + unitStr}</td>
+          <td title="${row.traceName}">${shortTrace}</td>
+        </tr>`;
+      });
+    }
+  }
+
+  tblHtml += '</tbody>';
+  tbl.innerHTML = tblHtml;
+}
+
+function toggleMarkerPanel() {
+  const panel = document.getElementById('mrpPanel');
+  if (panel && panel.classList.contains('open')) mrpClose();
+  else mrpOpen();
+}
+
+// Build marker traces (annotations) for a given plotId
+function buildMarkerTraces(plotId) {
+  const relevantMarkers = markers.filter(m => m.plotId === plotId);
+  return relevantMarkers.map(m => ({
+    x: [m.freq],
+    y: [m.yVal],
+    mode: 'markers',
+    type: 'scatter',
+    name: `M${m.id}`,
+    showlegend: false,
+    cliponaxis: true,
+    marker: {
+      symbol: 'diamond',
+      size: 11,
+      color: m.color,
+      line: { color: '#000', width: 1.5 },
+    },
+    hovertemplate: `<b>M${m.id}</b><br>Trace: ${m.traceName}<br>Freq: %{x:.5f} GHz<br>Value: %{y:.4f}<extra></extra>`,
+  }));
+}
+
+// Build annotations for marker labels (kept separate from traces so they don't affect axis)
+function buildMarkerAnnotations(plotId) {
+  const relevantMarkers = markers.filter(m => m.plotId === plotId);
+  const visMap = (traceVisibilityMap[plotId]) || {};
+  return relevantMarkers.map(m => {
+    // Respect saved trace visibility so annotations are correct after a replot
+    const parentVisible = visMap.hasOwnProperty(m.traceName)
+      ? visMap[m.traceName]
+      : true;
+    return {
+      x: m.freq,
+      y: m.yVal,
+      xref: 'x', yref: 'y',
+      text: `<b>M${m.id}</b>`,
+      showarrow: true,
+      arrowhead: 2,
+      arrowsize: 0.8,
+      arrowwidth: 1.2,
+      arrowcolor: m.color,
+      ax: 0,
+      ay: -28,
+      bgcolor: 'rgba(0,0,0,0.6)',
+      bordercolor: m.color,
+      borderwidth: 1,
+      borderpad: 2,
+      font: { family: 'IBM Plex Mono', size: 10, color: m.color },
+      xanchor: 'center',
+      yanchor: 'bottom',
+      captureevents: false,
+      xshift: 0,
+      yshift: 0,
+      _markerId: m.id,        // used by applyMarkerVisibility to match annotation to marker
+      visible: parentVisible, // hide annotation when parent trace is hidden
+    };
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Scroll-to-zoom
+// ═══════════════════════════════════════════════
+function attachScrollZoom(plotId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+
+  el.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const gd = el; // Plotly graph div
+    if (!gd._fullLayout) return;
+
+    const xaxis = gd._fullLayout.xaxis;
+    const yaxis = gd._fullLayout.yaxis;
+    if (!xaxis || !yaxis) return;
+
+    const xRange = xaxis.range;
+    const yRange = yaxis.range;
+    if (!xRange || !yRange) return;
+
+    // Zoom factor: positive delta = zoom in, negative = zoom out
+    const factor = e.deltaY > 0 ? 1.15 : 0.87;
+
+    // Get mouse position as fraction within the plot area
+    const rect = el.getBoundingClientRect();
+    const plotDiv = gd._fullLayout;
+    const ml = plotDiv.margin?.l || 50;
+    const mr = plotDiv.margin?.r || 15;
+    const mt = plotDiv.margin?.t || 36;
+    const mb = plotDiv.margin?.b || 45;
+    const plotW = rect.width - ml - mr;
+    const plotH = rect.height - mt - mb;
+    const mouseX = e.clientX - rect.left - ml;
+    const mouseY = e.clientY - rect.top - mt;
+    const fracX = Math.max(0, Math.min(1, mouseX / plotW));
+    const fracY = Math.max(0, Math.min(1, 1 - mouseY / plotH));
+
+    // Map mouse position to data coordinates (pivot point)
+    const pivX = xRange[0] + fracX * (xRange[1] - xRange[0]);
+    const pivY = yRange[0] + fracY * (yRange[1] - yRange[0]);
+
+    // New ranges centered on pivot
+    const newX0 = pivX - factor * (pivX - xRange[0]);
+    const newX1 = pivX + factor * (xRange[1] - pivX);
+    const newY0 = pivY - factor * (pivY - yRange[0]);
+    const newY1 = pivY + factor * (yRange[1] - pivY);
+
+    Plotly.relayout(el, {
+      'xaxis.range': [newX0, newX1],
+      'yaxis.range': [newY0, newY1],
+    });
+
+    // Save zoom state
+    zoomState[plotId] = { xMin: newX0, xMax: newX1, yMin: newY0, yMax: newY1 };
+  }, { passive: false });
+}
+
+// Double-click to reset zoom on a plot
+function attachDoubleClickReset(plotId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+  el.addEventListener('dblclick', () => {
+    delete zoomState[plotId];
+    Plotly.relayout(el, { 'xaxis.autorange': true, 'yaxis.autorange': true });
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  Plotting
+// ═══════════════════════════════════════════════
+function setLayout(layout, el) {
+  currentLayout = layout;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  zoomState = {}; // reset zoom on layout switch
+  replot();
+}
+
+// Palette used when cascade is active — one distinct color per file in chain
+const CASCADE_COLORS = [
+  '#ffd700','#ff6b9d','#56cfb2','#a78bfa','#ff8c42',
+  '#00e5ff','#3fb950','#f85149','#58a6ff','#bc8cff',
+];
+
+function buildTraces(paramFilter) {
+  const fmt = document.getElementById('yFormat').value;
+  const traces = [];
+  const allFiles = cascadeResult ? [...files, cascadeResult] : files;
+  const hasCascade = !!cascadeResult;
+
+  const PARAM_STYLES = {
+    'S11': { color: '#00e5ff', dash: 'solid' },
+    'S21': { color: '#3fb950', dash: 'solid' },
+    'S12': { color: '#ff8c42', dash: 'dash' },
+    'S22': { color: '#a78bfa', dash: 'dash' },
+    'S13': { color: '#ff6b9d', dash: 'dot' },
+    'S31': { color: '#56cfb2', dash: 'dot' },
+    'S23': { color: '#ffd700', dash: 'dashdot' },
+    'S32': { color: '#f85149', dash: 'dashdot' },
+    'S14': { color: '#c9d1d9', dash: 'longdash' },
+    'S41': { color: '#d29922', dash: 'longdash' },
+    'S24': { color: '#58a6ff', dash: 'longdashdot' },
+    'S42': { color: '#bc8cff', dash: 'longdashdot' },
+    'S33': { color: '#39d353', dash: 'solid' },
+    'S44': { color: '#ff7b72', dash: 'solid' },
+  };
+
+  const fileCount = allFiles.length;
+
+  allFiles.forEach((file, fileIdx) => {
+    for (let r = 0; r < file.ports; r++) {
+      for (let cc = 0; cc < file.ports; cc++) {
+        const label = `S${r+1}${cc+1}`;
+        if (paramFilter && !paramFilter.includes(label)) continue;
+        if (!activeParams.has(label) && !paramFilter) continue;
+
+        const pIdx = r * file.ports + cc;
+        if (!file.sdata[pIdx]) continue;
+
+        const xs = file.freqs;
+        const ys = file.sdata[pIdx].map(e => getY(e, fmt));
+        const isCasc = file.isCascade;
+        const style = PARAM_STYLES[label] || { color: file.color, dash: 'solid' };
+
+        let lineColor, lineWidth, lineDash;
+
+        if (hasCascade) {
+          // When cascade is active: each file in the chain gets its own cascade color,
+          // the actual CASCADE result stays gold, non-cascade files use PARAM_STYLES.
+          if (isCasc) {
+            lineColor = CASCADE_COLORS[0]; // gold for the merged result
+            lineWidth = 3;
+            lineDash = 'solid';
+          } else {
+            // Each regular file keeps param-style color, slightly shifted per file
+            lineColor = shiftColor(style.color, fileIdx * 25);
+            lineWidth = fileCount > 1 ? 1.5 + fileIdx * 0.4 : 2;
+            lineDash = style.dash;
+          }
+        } else {
+          lineColor = fileCount > 1 ? shiftColor(style.color, fileIdx * 30) : style.color;
+          lineWidth = fileCount > 1 ? 1.5 + fileIdx * 0.5 : 2;
+          lineDash = style.dash;
+        }
+
+        traces.push({
+          x: xs, y: ys,
+          name: `${isCasc ? '⊕ ' : ''}${file.name} · ${label}`,
+          type: 'scatter', mode: 'lines',
+          line: { color: lineColor, width: lineWidth, dash: lineDash },
+        });
+      }
+    }
+  });
+  return traces;
+}
+
+// Shift a hex color's lightness slightly to differentiate multiple files
+function shiftColor(hex, amount) {
+  try {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    const clamp = v => Math.max(30, Math.min(255, v + amount));
+    return `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+  } catch { return hex; }
+}
+
+function getYLabel() {
+  const fmt = document.getElementById('yFormat').value;
+  return { db:'Magnitude (dB)', mag:'Magnitude', phase:'Phase (°)', real:'Real', imag:'Imaginary' }[fmt];
+}
+
+function plotLayout(title, annotations=[], plotId='', extraOpts={}) {
+  const showGrid = document.getElementById('showGrid').checked;
+  const showLeg  = document.getElementById('showLegend').checked;
+  const th = getThemePlot();
+  const shapes = plotId ? buildLineMarkerShapes(plotId) : [];
+  return {
+    title: { text: title, font: { color: th.muted, size: 12, family: 'IBM Plex Mono' } },
+    paper_bgcolor: th.paper,
+    plot_bgcolor:  th.plot,
+    font: { color: th.font, family: 'IBM Plex Sans', size: 11 },
+    xaxis: {
+      title: 'Frequency (GHz)', color: th.muted,
+      gridcolor:    showGrid ? th.grid : 'transparent',
+      zerolinecolor: th.zero, showgrid: showGrid,
+      tickcolor: th.muted, linecolor: th.zero,
+    },
+    yaxis: {
+      title: getYLabel(), color: th.muted,
+      gridcolor:    showGrid ? th.grid : 'transparent',
+      zerolinecolor: th.zero, showgrid: showGrid,
+      tickcolor: th.muted, linecolor: th.zero,
+    },
+    legend: {
+      visible: showLeg,
+      bgcolor: th.legend,
+      bordercolor: th.legendBorder, borderwidth: 1,
+      font: { size: 10, family: 'IBM Plex Mono', color: th.font },
+    },
+    annotations: annotations,
+    shapes: shapes,
+    margin: { l:55, r:15, t:36, b:50 },
+    dragmode: markerMode ? false : 'zoom',
+    ...extraOpts,
+  };
+}
+
+function getZoomOpts(plotId) {
+  if (!zoomState[plotId]) return {};
+  const z = zoomState[plotId];
+  return {
+    'xaxis.range': [z.xMin, z.xMax],
+    'yaxis.range': [z.yMin, z.yMax],
+  };
+}
+
+function applyZoomAndListeners(plotId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+
+  // Apply saved zoom if available
+  if (zoomState[plotId]) {
+    const z = zoomState[plotId];
+    Plotly.relayout(el, {
+      'xaxis.range': [z.xMin, z.xMax],
+      'yaxis.range': [z.yMin, z.yMax],
+    });
+  }
+
+  // Scroll zoom
+  attachScrollZoom(plotId);
+  attachDoubleClickReset(plotId);
+
+  // Marker click
+  el.on('plotly_click', (data) => handlePlotClick(plotId, data));
+
+  // Drag point/line markers on plot
+  attachMarkerDrag(plotId);
+
+  // ── Track trace visibility manually on legend click ──
+  // We intercept the click, toggle our own map, update markers, then let Plotly proceed
+  el.on('plotly_legendclick', (eventData) => {
+    const gd = document.getElementById(plotId);
+    if (!gd || !gd.data) return true;
+
+    const clickedTrace = gd.data[eventData.curveNumber];
+    if (!clickedTrace) return true;
+
+    const traceName = clickedTrace.name;
+    // Current state before Plotly toggles it
+    const currentlyVisible = (clickedTrace.visible !== false && clickedTrace.visible !== 'legendonly');
+    // After click it will be toggled
+    const willBeVisible = !currentlyVisible;
+
+    // Update our manual visibility map
+    if (!traceVisibilityMap[plotId]) traceVisibilityMap[plotId] = {};
+    traceVisibilityMap[plotId][traceName] = willBeVisible;
+
+    // Update marker visibility immediately
+    setTimeout(() => applyMarkerVisibility(plotId), 30);
+    return true;
+  });
+
+  el.on('plotly_legenddoubleclick', (eventData) => {
+    const gd = document.getElementById(plotId);
+    if (!gd || !gd.data) return true;
+
+    // Double click = isolate one trace (all others hidden) OR show all
+    // Detect: if only one is visible → show all; else → isolate clicked
+    const clickedTrace = gd.data[eventData.curveNumber];
+    if (!clickedTrace) return true;
+
+    const nonMarkerTraces = gd.data.filter(t => !String(t.name).match(/^M\d+$/));
+    const visibleCount = nonMarkerTraces.filter(t => t.visible !== false && t.visible !== 'legendonly').length;
+    const isolating = visibleCount !== 1;
+
+    if (!traceVisibilityMap[plotId]) traceVisibilityMap[plotId] = {};
+    nonMarkerTraces.forEach(t => {
+      traceVisibilityMap[plotId][t.name] = isolating ? (t.name === clickedTrace.name) : true;
+    });
+
+    setTimeout(() => applyMarkerVisibility(plotId), 30);
+    return true;
+  });
+
+  // Save zoom on plotly relayout (e.g., after built-in drag-zoom)
+  el.on('plotly_relayout', (relayout) => {
+    if (relayout['xaxis.range[0]'] !== undefined) {
+      zoomState[plotId] = {
+        xMin: relayout['xaxis.range[0]'],
+        xMax: relayout['xaxis.range[1]'],
+        yMin: relayout['yaxis.range[0]'] ?? (zoomState[plotId]?.yMin),
+        yMax: relayout['yaxis.range[1]'] ?? (zoomState[plotId]?.yMax),
+      };
+    }
+    if (relayout['xaxis.autorange'] || relayout['yaxis.autorange']) {
+      delete zoomState[plotId];
+    }
+  });
+}
+
+// ── Manual trace visibility map ──
+// traceVisibilityMap[plotId][traceName] = true/false
+// We maintain this ourselves because Plotly's state during events is unreliable
+let traceVisibilityMap = {};
+
+// Apply marker visibility based on our manual tracking map
+function applyMarkerVisibility(plotId) {
+  const gd = document.getElementById(plotId);
+  if (!gd || !gd.data) return;
+
+  const plotMarkers = markers.filter(m => m.plotId === plotId);
+  if (plotMarkers.length === 0) return;
+
+  const visMap = traceVisibilityMap[plotId] || {};
+
+  const markerIndices = [];
+  const markerVisibilities = [];
+
+  gd.data.forEach((t, i) => {
+    const markerMatch = plotMarkers.find(m => `M${m.id}` === t.name);
+    if (!markerMatch) return;
+
+    // Look up parent trace visibility in our manual map
+    // Default to true (visible) if we haven't tracked it yet
+    const parentVisible = visMap.hasOwnProperty(markerMatch.traceName)
+      ? visMap[markerMatch.traceName]
+      : true;
+
+    markerIndices.push(i);
+    markerVisibilities.push(parentVisible);
+  });
+
+  if (markerIndices.length > 0) {
+    // Use Plotly.restyle to show/hide marker dot traces
+    markerVisibilities.forEach((vis, idx) => {
+      Plotly.restyle(plotId, { visible: vis }, [markerIndices[idx]]);
+    });
+  }
+
+  // ── Also hide/show the annotation labels for each marker ──
+  const existingAnnotations = (gd.layout && gd.layout.annotations) ? gd.layout.annotations : [];
+  if (existingAnnotations.length === 0) return;
+
+  const updatedAnnotations = existingAnnotations.map(ann => {
+    if (!ann._markerId) return ann; // not a marker annotation, leave it alone
+    const markerMatch = plotMarkers.find(m => m.id === ann._markerId);
+    if (!markerMatch) return ann;
+    const parentVisible = visMap.hasOwnProperty(markerMatch.traceName)
+      ? visMap[markerMatch.traceName]
+      : true;
+    return { ...ann, visible: parentVisible };
+  });
+
+  Plotly.relayout(plotId, { annotations: updatedAnnotations });
+}
+
+function replot() {
+  const grid = document.getElementById('plotGrid');
+  traceVisibilityMap = {}; // reset visibility tracking on full replot
+  
+  if (files.length === 0) {
+    grid.innerHTML = `
+      <div class="plot-cell" style="grid-column:1/-1;grid-row:1/-1">
+        <div class="empty-state">
+          <div class="big">📡</div>
+          <b>No files loaded</b>
+          <p>Drop Touchstone files (.s2p, .s1p, etc.) into the sidebar or click "Load Files" to get started.</p>
+        </div>
+      </div>`;
+    return;
+  }
+
+  grid.className = 'plot-grid';
+  const cfg = { responsive: true, displayModeBar: false, scrollZoom: false };
+
+  if (currentLayout === 'quad') {
+    grid.innerHTML = `
+      <div class="plot-cell" id="p00"></div>
+      <div class="plot-cell" id="p01"></div>
+      <div class="plot-cell" id="p10"></div>
+      <div class="plot-cell" id="p11"></div>`;
+
+    const quadCells = [
+      { id: 'p00', filter: ['S11'], title: 'S11' },
+      { id: 'p01', filter: ['S21'], title: 'S21' },
+      { id: 'p10', filter: ['S12'], title: 'S12' },
+      { id: 'p11', filter: ['S22'], title: 'S22' },
+    ];
+    for (const qc of quadCells) {
+      const traces = [...buildTraces(qc.filter), ...buildMarkerTraces(qc.id)];
+      const annots = buildMarkerAnnotations(qc.id);
+      Plotly.newPlot(qc.id, traces, plotLayout(qc.title, annots, qc.id), cfg)
+        .then(() => applyZoomAndListeners(qc.id));
+    }
+
+  } else if (currentLayout === 's21') {
+    grid.className = 'plot-grid single';
+    grid.innerHTML = `<div class="plot-cell" id="pMain"></div>`;
+    const traces = [...buildTraces(['S21']), ...buildMarkerTraces('pMain')];
+    const annots = buildMarkerAnnotations('pMain');
+    Plotly.newPlot('pMain', traces, plotLayout('S21 — Insertion Loss / Gain', annots, 'pMain'), { ...cfg, displayModeBar: true })
+      .then(() => applyZoomAndListeners('pMain'));
+
+  } else if (currentLayout === 's11') {
+    grid.className = 'plot-grid single';
+    grid.innerHTML = `<div class="plot-cell" id="pMain"></div>`;
+    const traces = [...buildTraces(['S11']), ...buildMarkerTraces('pMain')];
+    const annots = buildMarkerAnnotations('pMain');
+    Plotly.newPlot('pMain', traces, plotLayout('S11 — Return Loss', annots, 'pMain'), { ...cfg, displayModeBar: true })
+      .then(() => applyZoomAndListeners('pMain'));
+
+  } else if (currentLayout === 'smith') {
+    grid.className = 'plot-grid single';
+    grid.innerHTML = `<div class="plot-cell" id="pMain"></div>`;
+    const smithTraces = [];
+    const allFiles = cascadeResult ? [...files, cascadeResult] : files;
+    for (const file of allFiles) {
+      const s = file.sdata[0];
+      if (!s) continue;
+      smithTraces.push({
+        type: 'scattersmith',
+        real: s.map(e => e.re / (file.resistance || 50)),
+        imag: s.map(e => e.im / (file.resistance || 50)),
+        name: `${file.isCascade ? '⊕ ' : ''}${file.name} · S11`,
+        line: { color: file.color, width: file.isCascade ? 3 : 2 },
+        marker: { size: 0 },
+      });
+    }
+    Plotly.newPlot('pMain', smithTraces, {
+      ...plotLayout('Smith Chart — S11', [], 'pMain'),
+      smith: { bgcolor: getThemePlot().plot },
+    }, { ...cfg, displayModeBar: true }).then(() => applyZoomAndListeners('pMain'));
+
+  } else if (currentLayout === 'all') {
+    grid.className = 'plot-grid single';
+    grid.innerHTML = `<div class="plot-cell" id="pMain"></div>`;
+    const traces = [...buildTraces(null), ...buildMarkerTraces('pMain')];
+    const annots = buildMarkerAnnotations('pMain');
+    Plotly.newPlot('pMain', traces, plotLayout('All Parameters', annots, 'pMain'), { ...cfg, displayModeBar: true })
+      .then(() => applyZoomAndListeners('pMain'));
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  Export
+// ═══════════════════════════════════════════════
+function exportCSV() {
+  if (files.length === 0) return alert('No files loaded.');
+  const fmt = document.getElementById('yFormat').value;
+  let csv = 'Frequency_GHz';
+  
+  const allFiles = cascadeResult ? [...files, cascadeResult] : files;
+  const cols = [];
+  
+  for (const file of allFiles) {
+    for (let r = 0; r < file.ports; r++) {
+      for (let cc = 0; cc < file.ports; cc++) {
+        const label = `S${r+1}${cc+1}`;
+        if (!activeParams.has(label)) continue;
+        const pIdx = r * file.ports + cc;
+        if (!file.sdata[pIdx]) continue;
+        cols.push({ file, label, pIdx });
+        csv += `,${file.name}_${label}`;
+      }
+    }
+  }
+  csv += '\n';
+  
+  const f0 = files[0];
+  for (let i = 0; i < f0.freqs.length; i++) {
+    let row = f0.freqs[i].toFixed(6);
+    for (const col of cols) {
+      const e = col.file.sdata[col.pIdx][i];
+      row += ',' + (e ? getY(e, fmt).toFixed(6) : '');
+    }
+    csv += row + '\n';
+  }
+
+  // Append markers section
+  if (markers.length > 0) {
+    csv += '\n# Markers\n# ID,Trace,Freq_GHz,Value\n';
+    for (const m of markers) {
+      csv += `M${m.id},"${m.traceName}",${m.freq.toFixed(6)},${m.yVal.toFixed(6)}\n`;
+    }
+  }
+  
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sparameter_export.csv';
+  a.click();
+}
+
+function exportPNG() {
+  const ids = ['p00','p01','p10','p11','pMain'].filter(id => document.getElementById(id));
+  if (ids.length === 0) return;
+  Plotly.downloadImage(ids[0], {format:'png', filename:'sparam_plot', width:1600, height:900});
+}
+
+// ═══════════════════════════════════════════════
+//  Drag & drop
+// ═══════════════════════════════════════════════
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('drag-over'); }
+function onDragLeave(e) { document.getElementById('dropzone').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  for (const f of e.dataTransfer.files) readFile(f);
+}
+
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  for (const f of e.dataTransfer.files) readFile(f);
+});
+
+// ═══════════════════════════════════════════════
+//  Theme switching
+// ═══════════════════════════════════════════════
+let currentTheme = 'dark';
+
+const THEME_PLOT = {
+  dark: {
+    paper: '#0d1117', plot: '#0d1117',
+    grid: '#21262d', zero: '#30363d',
+    font: '#e6edf3', muted: '#8b949e',
+    legend: 'rgba(22,27,34,0.9)', legendBorder: '#30363d',
+  },
+  light: {
+    paper: '#ffffff', plot: '#ffffff',
+    grid: '#e8ecf0', zero: '#d0d7de',
+    font: '#1f2328', muted: '#656d76',
+    legend: 'rgba(255,255,255,0.95)', legendBorder: '#d0d7de',
+  },
+  blue: {
+    paper: '#0a0e1a', plot: '#0a0e1a',
+    grid: '#1e3a5f', zero: '#1e3a5f',
+    font: '#e3f2fd', muted: '#78909c',
+    legend: 'rgba(13,21,38,0.95)', legendBorder: '#1e3a5f',
+  },
+};
+
+function setTheme(theme) {
+  currentTheme = theme;
+  document.body.className = theme === 'dark' ? '' : `theme-${theme}`;
+
+  // Update active button
+  ['dark','light','blue'].forEach(t => {
+    const btn = document.getElementById(`btn-${t}`);
+    if (btn) btn.classList.toggle('active', t === theme);
+  });
+
+  // Save preference
+  try { localStorage.setItem('sparam_theme', theme); } catch(e) {}
+
+  // Replot with new theme colours
+  replot();
+}
+
+function getThemePlot() {
+  return THEME_PLOT[currentTheme] || THEME_PLOT.dark;
+}
+
+// ═══════════════════════════════════════════════
+//  Sidebar resize
+// ═══════════════════════════════════════════════
+const handle = document.getElementById('resizeHandle');
+const sidebarEl = document.getElementById('sidebar');
+let dragging = false, startX = 0, startW = 0;
+handle.addEventListener('mousedown', e => { dragging = true; startX = e.clientX; startW = sidebarEl.offsetWidth; });
+document.addEventListener('mousemove', e => { if (!dragging) return; sidebarEl.style.width = Math.max(160, Math.min(500, startW + e.clientX - startX)) + 'px'; });
+document.addEventListener('mouseup', () => { dragging = false; });
+
+// Init
+try {
+  const saved = localStorage.getItem('sparam_theme');
+  if (saved && ['dark','light','blue'].includes(saved)) setTheme(saved);
+} catch(e) {}
+setStatus('Ready — load .s2p files to begin');
+replot();
+</script>
+</body>
+</html>
