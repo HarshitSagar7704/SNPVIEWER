@@ -1,0 +1,828 @@
+AD7814 + MAX 10 FPGA + UART
+================================
+
+Complete VHDL example with comments.
+
+ASSUMPTIONS
+-----------
+- FPGA clock: 50 MHz
+- AD7814 SCLK: approximately 1 MHz
+- UART: 115200 baud, 8 data bits, no parity, 1 stop bit (8N1)
+- AD7814 SCLK idle state: HIGH
+- AD7814 CS is active LOW
+- AD7814 DIN is tied to GND for read-only operation
+- UART transmits the raw 10-bit AD7814 result as 3 hexadecimal ASCII
+  characters followed by CR and LF.
+
+Example:
+    AD7814 raw value = 0x064
+    UART output      = 064<CR><LF>
+
+
+VHDL CODE
+=========
+
+library IEEE;
+
+-- Standard logic types such as STD_LOGIC and STD_LOGIC_VECTOR
+use IEEE.STD_LOGIC_1164.ALL;
+
+-- Required for arithmetic operations if needed
+use IEEE.NUMERIC_STD.ALL;
+
+
+--------------------------------------------------------------------
+-- ENTITY
+--
+-- This defines all pins/signals that connect the FPGA to the
+-- outside world.
+--------------------------------------------------------------------
+
+entity AD7814_UART is
+
+    Port (
+
+        ----------------------------------------------------------------
+        -- FPGA CLOCK
+        --
+        -- Assumed clock frequency = 50 MHz
+        ----------------------------------------------------------------
+        clk       : in  STD_LOGIC;
+
+
+        ----------------------------------------------------------------
+        -- AD7814 SERIAL DATA INPUT TO FPGA
+        --
+        -- DOUT from AD7814 connects to this FPGA input.
+        ----------------------------------------------------------------
+        ad_dout   : in  STD_LOGIC;
+
+
+        ----------------------------------------------------------------
+        -- AD7814 CHIP SELECT
+        --
+        -- Active LOW.
+        --
+        -- '1' = AD7814 not selected
+        -- '0' = AD7814 selected
+        ----------------------------------------------------------------
+        ad_cs     : out STD_LOGIC;
+
+
+        ----------------------------------------------------------------
+        -- AD7814 SERIAL CLOCK
+        --
+        -- FPGA generates this clock.
+        ----------------------------------------------------------------
+        ad_sclk   : out STD_LOGIC;
+
+
+        ----------------------------------------------------------------
+        -- UART TRANSMIT OUTPUT
+        --
+        -- Connect this to the RX input of your USB-UART converter.
+        ----------------------------------------------------------------
+        uart_tx   : out STD_LOGIC;
+
+
+        ----------------------------------------------------------------
+        -- RAW 10-BIT TEMPERATURE DATA
+        --
+        -- Optional output.
+        --
+        -- It can be observed in SignalTap or used by other FPGA logic.
+        ----------------------------------------------------------------
+        temp_data : out STD_LOGIC_VECTOR(9 downto 0)
+
+    );
+
+end AD7814_UART;
+
+
+
+--------------------------------------------------------------------
+-- ARCHITECTURE
+--------------------------------------------------------------------
+
+architecture Behavioral of AD7814_UART is
+
+
+    ----------------------------------------------------------------
+    -- AD7814 SIGNALS
+    ----------------------------------------------------------------
+
+    -- Internal register for AD7814 SCLK.
+    --
+    -- AD7814 uses an idle-HIGH clock.
+    signal sclk_reg : STD_LOGIC := '1';
+
+
+    -- Internal register for chip select.
+    --
+    -- Initially HIGH = AD7814 not selected.
+    signal cs_reg : STD_LOGIC := '1';
+
+
+    ----------------------------------------------------------------
+    -- AD7814 CLOCK DIVIDER
+    --
+    -- FPGA clock = 50 MHz
+    --
+    -- We count 25 FPGA clocks before changing SCLK.
+    --
+    -- 50 MHz / (25 x 2) = 1 MHz
+    --
+    -- Therefore AD7814 SCLK is approximately 1 MHz.
+    ----------------------------------------------------------------
+
+    signal clk_count : integer range 0 to 24 := 0;
+
+
+    ----------------------------------------------------------------
+    -- AD7814 BIT COUNTER
+    --
+    -- AD7814 serial transfer consists of 16 SCLK cycles.
+    ----------------------------------------------------------------
+
+    signal bit_count : integer range 0 to 16 := 0;
+
+
+    ----------------------------------------------------------------
+    -- AD7814 DATA REGISTER
+    --
+    -- Stores the 10-bit temperature result.
+    ----------------------------------------------------------------
+
+    signal data_reg : STD_LOGIC_VECTOR(9 downto 0) :=
+                      (others => '0');
+
+
+    ----------------------------------------------------------------
+    -- DELAY BETWEEN AD7814 READS
+    --
+    -- 50,000 clocks at 50 MHz = 1 ms.
+    --
+    -- This controls how often we start a new AD7814 transaction.
+    ----------------------------------------------------------------
+
+    signal delay_count : integer range 0 to 49999 := 0;
+
+
+    ----------------------------------------------------------------
+    -- UART SIGNALS
+    ----------------------------------------------------------------
+
+    -- UART baud counter.
+    --
+    -- 50 MHz / 115200 = approximately 434 clocks per UART bit.
+    signal uart_count : integer range 0 to 433 := 0;
+
+
+    -- UART busy flag.
+    --
+    -- '1' = UART is currently transmitting
+    -- '0' = UART is idle
+    signal uart_busy : STD_LOGIC := '0';
+
+
+    ----------------------------------------------------------------
+    -- UART DATA REGISTER
+    --
+    -- Stores one ASCII character to transmit.
+    ----------------------------------------------------------------
+
+    signal uart_data : STD_LOGIC_VECTOR(7 downto 0) :=
+                       (others => '0');
+
+
+    ----------------------------------------------------------------
+    -- UART BIT COUNTER
+    --
+    -- UART frame:
+    --
+    -- bit 0 = START
+    -- bit 1-8 = DATA
+    -- bit 9 = STOP
+    ----------------------------------------------------------------
+
+    signal uart_bit : integer range 0 to 9 := 0;
+
+
+    ----------------------------------------------------------------
+    -- Actual UART TX output register.
+    ----------------------------------------------------------------
+
+    signal uart_reg : STD_LOGIC := '1';
+
+
+    ----------------------------------------------------------------
+    -- UART START REQUEST
+    --
+    -- When this becomes '1', UART transmission should begin.
+    ----------------------------------------------------------------
+
+    signal uart_start : STD_LOGIC := '0';
+
+
+    ----------------------------------------------------------------
+    -- UART MESSAGE STATE
+    --
+    -- Message format:
+    --
+    --     XXX<CR><LF>
+    --
+    -- Example:
+    --
+    --     064
+    --
+    -- States:
+    --
+    -- 0 = first HEX digit
+    -- 1 = second HEX digit
+    -- 2 = third HEX digit
+    -- 3 = carriage return
+    -- 4 = line feed
+    -- 5 = finished
+    ----------------------------------------------------------------
+
+    signal send_state : integer range 0 to 5 := 0;
+
+
+    ----------------------------------------------------------------
+    -- HEX NIBBLE
+    --
+    -- 10-bit AD7814 data:
+    --
+    -- [9:8] = first HEX digit
+    -- [7:4] = second HEX digit
+    -- [3:0] = third HEX digit
+    ----------------------------------------------------------------
+
+    signal nibble : STD_LOGIC_VECTOR(3 downto 0);
+
+
+    ----------------------------------------------------------------
+    -- LATCHED TEMPERATURE
+    --
+    -- Completed AD7814 result is copied here before UART
+    -- transmission.
+    ----------------------------------------------------------------
+
+    signal temperature_latched : STD_LOGIC_VECTOR(9 downto 0) :=
+                                 (others => '0');
+
+
+
+begin
+
+
+    ----------------------------------------------------------------
+    -- CONNECT INTERNAL SIGNALS TO OUTPUT PINS
+    ----------------------------------------------------------------
+
+    ad_cs <= cs_reg;
+
+    ad_sclk <= sclk_reg;
+
+    uart_tx <= uart_reg;
+
+    temp_data <= data_reg;
+
+
+
+    ----------------------------------------------------------------
+    -- HEX TO ASCII FUNCTION
+    --
+    -- UART sends characters, not hexadecimal numbers directly.
+    --
+    -- Example:
+    -- 0 -> ASCII '0' -> 0x30
+    -- 9 -> ASCII '9' -> 0x39
+    -- A -> ASCII 'A' -> 0x41
+    ----------------------------------------------------------------
+
+    function hex_to_ascii (
+        hex : STD_LOGIC_VECTOR(3 downto 0)
+    ) return STD_LOGIC_VECTOR is
+
+        variable result : STD_LOGIC_VECTOR(7 downto 0);
+
+    begin
+
+        case hex is
+
+            when "0000" => result := x"30"; -- 0
+            when "0001" => result := x"31"; -- 1
+            when "0010" => result := x"32"; -- 2
+            when "0011" => result := x"33"; -- 3
+            when "0100" => result := x"34"; -- 4
+            when "0101" => result := x"35"; -- 5
+            when "0110" => result := x"36"; -- 6
+            when "0111" => result := x"37"; -- 7
+            when "1000" => result := x"38"; -- 8
+            when "1001" => result := x"39"; -- 9
+
+            when "1010" => result := x"41"; -- A
+            when "1011" => result := x"42"; -- B
+            when "1100" => result := x"43"; -- C
+            when "1101" => result := x"44"; -- D
+            when "1110" => result := x"45"; -- E
+            when "1111" => result := x"46"; -- F
+
+            when others => result := x"30";
+
+        end case;
+
+        return result;
+
+    end function;
+
+
+
+    ----------------------------------------------------------------
+    -- MAIN PROCESS
+    --
+    -- Everything is synchronized to the 50 MHz FPGA clock.
+    ----------------------------------------------------------------
+
+    process(clk)
+
+    begin
+
+        if rising_edge(clk) then
+
+
+            ----------------------------------------------------------------
+            -- PART 1: AD7814 COMMUNICATION
+            ----------------------------------------------------------------
+
+            if cs_reg = '1' then
+
+                -- AD7814 is idle.
+                -- Keep SCLK HIGH.
+                sclk_reg <= '1';
+
+
+                -- Wait before starting another read.
+                if delay_count = 49999 then
+
+                    delay_count <= 0;
+
+                    -- Select AD7814.
+                    cs_reg <= '0';
+
+                    -- Start counting SCLK cycles.
+                    bit_count <= 0;
+
+                else
+
+                    delay_count <= delay_count + 1;
+
+                end if;
+
+
+            else
+
+                ----------------------------------------------------------------
+                -- AD7814 is selected.
+                -- Generate SCLK.
+                ----------------------------------------------------------------
+
+                if clk_count = 24 then
+
+                    clk_count <= 0;
+
+                    -- Toggle SCLK.
+                    sclk_reg <= not sclk_reg;
+
+
+                    ----------------------------------------------------------------
+                    -- FALLING EDGE OF SCLK
+                    --
+                    -- AD7814 changes DOUT on the falling edge.
+                    ----------------------------------------------------------------
+
+                    if sclk_reg = '1' then
+
+                        bit_count <= bit_count + 1;
+
+                    end if;
+
+
+                    ----------------------------------------------------------------
+                    -- RISING EDGE OF SCLK
+                    --
+                    -- FPGA samples AD7814 DOUT.
+                    ----------------------------------------------------------------
+
+                    if sclk_reg = '0' then
+
+                        ----------------------------------------------------------------
+                        -- AD7814 serial data:
+                        --
+                        -- Leading zero
+                        -- DB9
+                        -- DB8
+                        -- ...
+                        -- DB0
+                        --
+                        -- Capture the 10 temperature bits.
+                        ----------------------------------------------------------------
+
+                        if bit_count >= 2 and bit_count <= 11 then
+
+                            -- Shift existing data left.
+                            -- Put new DOUT bit into bit 0.
+
+                            data_reg <= data_reg(8 downto 0)
+                                        & ad_dout;
+
+                        end if;
+
+
+                        ----------------------------------------------------------------
+                        -- End of 16-clock AD7814 transaction.
+                        ----------------------------------------------------------------
+
+                        if bit_count = 16 then
+
+                            -- Release AD7814.
+                            cs_reg <= '1';
+
+                            -- Return SCLK to idle HIGH.
+                            sclk_reg <= '1';
+
+                            -- Save completed temperature result.
+                            temperature_latched <= data_reg;
+
+                            -- Request UART transmission.
+                            uart_start <= '1';
+
+                        end if;
+
+                    end if;
+
+
+                else
+
+                    -- Continue SCLK divider.
+                    clk_count <= clk_count + 1;
+
+                end if;
+
+            end if;
+
+
+
+            ----------------------------------------------------------------
+            -- PART 2: START UART MESSAGE
+            ----------------------------------------------------------------
+
+            if uart_start = '1' then
+
+                -- uart_start is a one-clock request.
+                uart_start <= '0';
+
+
+                -- Start only when UART is idle.
+                if uart_busy = '0' then
+
+                    uart_busy <= '1';
+
+                    -- UART starts with START bit.
+                    uart_bit <= 0;
+
+                    -- Reset baud counter.
+                    uart_count <= 0;
+
+                    -- START bit is LOW.
+                    uart_reg <= '0';
+
+                    -- Start with first HEX digit.
+                    send_state <= 0;
+
+                    -- First HEX digit is bits [9:8].
+                    -- Since this is only 2 bits, prepend two zeroes.
+
+                    uart_data <= hex_to_ascii(
+                        "00" & temperature_latched(9 downto 8)
+                    );
+
+                end if;
+
+            end if;
+
+
+
+            ----------------------------------------------------------------
+            -- PART 3: UART TRANSMITTER
+            ----------------------------------------------------------------
+
+            if uart_busy = '1' then
+
+
+                ----------------------------------------------------------------
+                -- UART BIT TIMING
+                --
+                -- Wait approximately 434 FPGA clocks for each UART bit.
+                ----------------------------------------------------------------
+
+                if uart_count = 433 then
+
+                    uart_count <= 0;
+
+
+                    ----------------------------------------------------------------
+                    -- Check if the current UART character is finished.
+                    ----------------------------------------------------------------
+
+                    if uart_bit = 9 then
+
+
+                        ----------------------------------------------------------------
+                        -- One complete UART character is finished.
+                        ----------------------------------------------------------------
+
+                        case send_state is
+
+
+                            ----------------------------------------------------------------
+                            -- FIRST HEX CHARACTER FINISHED
+                            ----------------------------------------------------------------
+
+                            when 0 =>
+
+                                send_state <= 1;
+
+                                -- Second HEX digit = bits [7:4].
+                                uart_data <= hex_to_ascii(
+                                    temperature_latched(7 downto 4)
+                                );
+
+                                -- Start next UART character.
+                                uart_bit <= 0;
+
+                                -- Start bit.
+                                uart_reg <= '0';
+
+
+
+                            ----------------------------------------------------------------
+                            -- SECOND HEX CHARACTER FINISHED
+                            ----------------------------------------------------------------
+
+                            when 1 =>
+
+                                send_state <= 2;
+
+                                -- Third HEX digit = bits [3:0].
+                                uart_data <= hex_to_ascii(
+                                    temperature_latched(3 downto 0)
+                                );
+
+                                uart_bit <= 0;
+
+                                uart_reg <= '0';
+
+
+
+                            ----------------------------------------------------------------
+                            -- THIRD HEX CHARACTER FINISHED
+                            ----------------------------------------------------------------
+
+                            when 2 =>
+
+                                send_state <= 3;
+
+                                -- Carriage Return.
+                                uart_data <= x"0D";
+
+                                uart_bit <= 0;
+
+                                uart_reg <= '0';
+
+
+
+                            ----------------------------------------------------------------
+                            -- CARRIAGE RETURN FINISHED
+                            ----------------------------------------------------------------
+
+                            when 3 =>
+
+                                send_state <= 4;
+
+                                -- Line Feed.
+                                uart_data <= x"0A";
+
+                                uart_bit <= 0;
+
+                                uart_reg <= '0';
+
+
+
+                            ----------------------------------------------------------------
+                            -- LINE FEED FINISHED
+                            ----------------------------------------------------------------
+
+                            when 4 =>
+
+                                -- Entire message has been transmitted.
+                                uart_busy <= '0';
+
+                                -- UART idle state is HIGH.
+                                uart_reg <= '1';
+
+                                send_state <= 5;
+
+                                uart_bit <= 0;
+
+
+
+                            when others =>
+
+                                -- Safety condition.
+                                uart_busy <= '0';
+
+                                uart_reg <= '1';
+
+                        end case;
+
+
+                    else
+
+                        -- Move to next bit of current UART frame.
+                        uart_bit <= uart_bit + 1;
+
+                    end if;
+
+
+                else
+
+                    -- Continue counting clocks for this UART bit.
+                    uart_count <= uart_count + 1;
+
+                end if;
+
+
+
+                ----------------------------------------------------------------
+                -- UART OUTPUT
+                --
+                -- UART transmits:
+                --
+                -- START
+                -- DATA BIT 0
+                -- DATA BIT 1
+                -- ...
+                -- DATA BIT 7
+                -- STOP
+                ----------------------------------------------------------------
+
+                case uart_bit is
+
+                    when 0 =>
+                        -- START BIT
+                        uart_reg <= '0';
+
+                    when 1 =>
+                        -- DATA BIT 0
+                        uart_reg <= uart_data(0);
+
+                    when 2 =>
+                        -- DATA BIT 1
+                        uart_reg <= uart_data(1);
+
+                    when 3 =>
+                        -- DATA BIT 2
+                        uart_reg <= uart_data(2);
+
+                    when 4 =>
+                        -- DATA BIT 3
+                        uart_reg <= uart_data(3);
+
+                    when 5 =>
+                        -- DATA BIT 4
+                        uart_reg <= uart_data(4);
+
+                    when 6 =>
+                        -- DATA BIT 5
+                        uart_reg <= uart_data(5);
+
+                    when 7 =>
+                        -- DATA BIT 6
+                        uart_reg <= uart_data(6);
+
+                    when 8 =>
+                        -- DATA BIT 7
+                        uart_reg <= uart_data(7);
+
+                    when 9 =>
+                        -- STOP BIT
+                        uart_reg <= '1';
+
+                    when others =>
+                        uart_reg <= '1';
+
+                end case;
+
+            end if;
+
+        end if;
+
+    end process;
+
+end Behavioral;
+
+
+HARDWARE CONNECTIONS
+====================
+
+AD7814 -> MAX 10
+----------------
+
+AD7814 DOUT  -> FPGA ad_dout
+AD7814 CS    -> FPGA ad_cs
+AD7814 SCLK  -> FPGA ad_sclk
+AD7814 DIN   -> GND   (read-only operation)
+AD7814 GND   -> FPGA/board GND
+AD7814 VDD   -> appropriate supply for the AD7814
+
+
+UART
+----
+
+FPGA uart_tx -> USB-UART adapter RX
+FPGA GND     -> USB-UART adapter GND
+
+Do NOT connect the FPGA UART TX directly to an RS-232 voltage-level
+port. Use a suitable 3.3 V TTL/CMOS USB-UART adapter.
+
+
+QUARTUS PIN ASSIGNMENTS
+=======================
+
+Assign the actual pins for:
+
+    clk
+    ad_dout
+    ad_cs
+    ad_sclk
+    uart_tx
+
+Do not copy arbitrary FPGA pin numbers. Use the actual pins from
+your board/schematic.
+
+Set the appropriate I/O standard for the FPGA pins, normally
+3.3-V LVTTL/LVCMOS depending on your board and AD7814 supply.
+
+
+UART TERMINAL SETTINGS
+======================
+
+Baud rate : 115200
+Data bits : 8
+Parity    : None
+Stop bits : 1
+Flow ctrl : None
+
+
+EXPECTED OUTPUT
+===============
+
+For example, if AD7814 reports approximately +25 degrees C:
+
+    Raw 10-bit value = 0x064
+
+UART sends:
+
+    '0'
+    '6'
+    '4'
+    CR
+    LF
+
+The terminal displays:
+
+    064
+
+
+IMPORTANT
+=========
+
+The hexadecimal value being transmitted is the RAW 10-bit AD7814
+result. It is not an ASCII temperature such as "25C".
+
+The AD7814 has 0.25 degree C/LSB resolution. For example:
+
+    0 C   -> 0x000
+    25 C  -> 0x064
+    50 C  -> 0x0C8
+
+The exact temperature conversion should be handled separately if
+you later want the UART to display something like:
+
+    25.00 C
+
+instead of:
+
+    064
